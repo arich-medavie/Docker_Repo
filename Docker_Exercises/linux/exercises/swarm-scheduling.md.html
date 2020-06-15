@@ -1,0 +1,227 @@
+<html>
+<head>
+    <title>swarm-scheduling.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="swarm-scheduling">Swarm Scheduling</h1>
+<p>By default, the Swarm scheduling algorithm tries to spread workload out roughly evenly across your Swarm. In many cases, we want to exert more nuanced control over what containers get scheduled where, in order to respect resource availability, hardware requirements, application high availability and other concerns. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Impose CPU and memory resource reservations and limitations</li>
+<li>Schedule services in global or replicated mode, and define appropriate use cases for each</li>
+<li>Schedule tasks on a subset of nodes via label constraints</li>
+<li>Schedule topology-aware services</li>
+</ul>
+<h2 id="restricting-resource-consumption">Restricting Resource Consumption</h2>
+<p>By default, containers can consume as much CPU and memory as they want; in practice, unconstrained CPU usage leads to noisy-neighbor problems where one container can starve all other co-located containers of CPU time, and unconstrained memory usage leads to processes getting killed with out-of-memory errors. When scheduling services, we must prevent containers from overconsuming compute resources, and make sure we&#39;re scheduling only as many containers on a host as that host can realistically support.</p>
+<ol>
+<li><p>Create a service based on the <code>training/stress:3.0</code> container, with a few flags to make it consume two full CPUs and allocate a gigabyte of memory. We&#39;ll also introduce the <code>--detach</code> flag, which sends the service startup to the background:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service create --name compute-stress \
+    --replicas 4 \
+    --detach \
+    training/stress:3.0 --vm 2 --vm-bytes 1024M
+</code></pre>
+</li>
+<li><p>Check the resource consumption of your containers on one of your hosts:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stats
+
+CONTAINER ID        NAME                      CPU %     MEM USAGE / LIMIT   MEM %
+b97b645e3a4f        compute-stress.4.o7v...   199.38%   1.128GiB / 3.7GiB   30.48%
+</code></pre>
+<p><code>CTRL+C</code> to escape from the stats view once you&#39;ve seen it. The one container on this host is consuming two full CPUs and over a gigabyte of memory; anything else scheduled on this node is going to be starved of resources.</p>
+</li>
+<li><p>Remove this service, recreate it with a limitation on how much CPU its containers are allowed to consume, and check the stats again:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service rm compute-stress
+[centos@node-0 ~]$ docker service create --name compute-stress \
+    --replicas 4 \
+    --limit-cpu 1 \
+    --detach \
+    training/stress:3.0 --vm 2 --vm-bytes 1024M    
+[centos@node-0 ~]$ docker stats
+
+CONTAINER ID        NAME                      CPU %     MEM USAGE / LIMIT   MEM %
+d311d88debd9        compute-stress.2.6w0...   100.52%   1.158GiB / 3.7GiB   31.29%
+</code></pre>
+<p>The <code>--limit-cpu 1</code> flag imposes control group limits on our containers, preventing them from consuming more than one core&#39;s worth of cycles.</p>
+</li>
+<li><p>We&#39;ve throttled our CPU consumption above, but that one container is still hogging around a gigabyte of memory; we can similarly limit memory consumption to prevent random out-of-memory process kills from taking down the host. Remove and recreate your service, this time with a memory limit:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service rm compute-stress
+[centos@node-0 ~]$ docker service create --name compute-stress \
+    --replicas 4 \
+    --limit-cpu 1 \
+    --limit-memory 512M \
+    --detach \
+    training/stress:3.0 --vm 2 --vm-bytes 1024M    
+</code></pre>
+</li>
+<li><p>List you containers with <code>docker container ls -a</code>; you should see a list of exited containers. Inspect one of them, and look for its out-of-memory status:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker container ls -a
+CONTAINER ID     IMAGE                     CREATED         STATUS
+3eb69ace1d66     training/stress:3.0  ...  4 seconds ago   Created 
+eac5f4c35142     training/stress:3.0  ...  5 seconds ago   Exited (1) 5 seconds ago
+
+[centos@node-0 ~]$ docker container inspect eac5f4c35142 | grep OOM
+
+            &quot;OOMKilled&quot;: true,
+</code></pre>
+<p><code>--limit-memory</code> works a little differently than <code>--limit-cpu</code>; while the CPU limit throttled a running container, the memory limit kills the container with an Out Of Memory exception if it tries to exceed its memory limit; this way, we avoid the random out-of-memory process kill that the kernel usually imposes, and which can take down a worker by potentially killing the Docker daemon itself.</p>
+</li>
+<li><p>So far, we&#39;ve limited the amount of resources a container can consume once scheduled, but we still haven&#39;t prevented the scheduler from <em>overprovisioning</em> containers on a node; we would like to prevent Docker from scheduling more containers on a node than that node can support. Delete and recreate your service one more time, this time without exceeding your memory limit and also imposing a scheduling reservation with <code>--reserve-memory</code>:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service rm compute-stress
+[centos@node-0 ~]$ docker service create --name compute-stress \
+    --replicas 4 \
+    --limit-cpu 1 \
+    --limit-memory 512M \
+    --reserve-memory 512M \
+    --detach \
+    training/stress:3.0 --vm 2 --vm-bytes 128M  
+
+[centos@node-0 ~]$ docker service ps compute-stress
+</code></pre>
+<p>You should see your four tasks running happily.</p>
+</li>
+<li><p>Now scale up your service to more replicas than your current cluster can support:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service update compute-stress --replicas=40 --detach
+[centos@node-0 ~]$ docker service ps compute-stress
+
+ID       NAME                CURRENT STATE           ERROR                         
+...    
+z6t...   compute-stress.31   Pending 2 seconds ago   &quot;no suitable node (insufficien…&quot; 
+xf3...   compute-stress.32   Pending 2 seconds ago   &quot;no suitable node (insufficien…&quot;
+...
+</code></pre>
+<p>Many of your tasks should be stuck in <code>CURRENT STATE: Pending</code>. Inspect one of them:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker inspect xf3xigecdfw8
+
+...
+    &quot;Status&quot;: {
+        &quot;Timestamp&quot;: &quot;2019-01-29T16:31:45.5859483Z&quot;,
+        &quot;State&quot;: &quot;pending&quot;,
+        &quot;Message&quot;: &quot;pending task scheduling&quot;,
+        &quot;Err&quot;: &quot;no suitable node (insufficient resources on 4 nodes)&quot;,
+        &quot;PortStatus&quot;: {}
+    }
+...
+</code></pre>
+<p>From the <code>Status</code> block in the task info, we can see that this task isn&#39;t getting scheduled because there isn&#39;t sufficient resources available in the cluster to support it.</p>
+<blockquote>
+<p><strong>Always limit resource consumption</strong> using <em>both</em> limits and reservations for CPU and memory. Failing to do so is a very common mistake that can lead to a widespread cluster outage; if your cluster is running at near-capacity and one node fails, its workload will get rescheduled to other nodes, potentially causing them to also fail, initiating a cascading cluster outage.</p>
+</blockquote>
+</li>
+<li><p>Clean up by removing your service:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service rm compute-stress
+</code></pre>
+</li>
+</ol>
+<h2 id="configuring-global-scheduling">Configuring Global Scheduling</h2>
+<p>So far, all the services we&#39;ve created have been run in the default <em>replicated mode</em>; as we&#39;ve seen, Swarm spreads containers out across the cluster, potentially respecting resource reservations. Sometimes, we want to run services that create <em>exactly one</em> container on each host in our cluster; this is typically used for deploying daemon, like logging, monitoring, or node management tools which need to run locally on every node.</p>
+<ol>
+<li><p>Create a globally scheduled service:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service create --mode global \
+    --name my-global \
+    centos:7 ping 8.8.8.8
+</code></pre>
+</li>
+<li><p>Check what nodes your service tasks were scheduled on:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service ps my-global
+
+ID                 NAME                                          IMAGE         NODE   
+rjl91n1i5o4g       competent_taussig.j9hmrf8ne6s8ysyb3k3y0wtp9   centos:7      node-3
+pzkiv2kpsu26       competent_taussig.c3va5z6je8zpkozgn0cm5kllt   centos:7      node-2
+k767q7i1f73t       competent_taussig.afoyo4r860dbwve1h4dm3dsrq   centos:7      node-1
+wem26fmzq2k5       competent_taussig.lnki68wnzp0r7456zo6xc46s2   centos:7      node-0
+</code></pre>
+<p>One task is scheduled on every node in the swarm; as you add or remove nodes from the swarm, the global service will be rescaled appropriately.</p>
+</li>
+<li><p>Remove your service with <code>docker service rm my-global</code>.</p>
+</li>
+</ol>
+<h2 id="scheduling-via-node-constraints">Scheduling via Node Constraints</h2>
+<p>Sometimes, we want to confine our containers to specific nodes; for this, we can use <em>constraints</em> and <em>node properties</em>.</p>
+<ol>
+<li><p>Add a label <code>datacenter</code> with value <code>east</code> to two nodes of your swarm:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker node update --label-add datacenter=east node-0
+[centos@node-0 ~]$ docker node update --label-add datacenter=east node-1
+</code></pre>
+</li>
+<li><p>Add a label <code>datacenter</code> with value <code>west</code> to the other two nodes:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker node update --label-add datacenter=west node-2
+[centos@node-0 ~]$ docker node update --label-add datacenter=west node-3
+</code></pre>
+<p>Note these labels are user-defined; <code>datacenter</code> and its values <code>east</code> and <code>west</code> can be anything you like.</p>
+</li>
+<li><p>Schedule a service constrained to run on nodes labeled as <code>datacenter=east</code>:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service create --replicas 4 \
+    --constraint node.labels.datacenter==east \
+    --name east-deploy \
+    centos:7 ping 8.8.8.8
+</code></pre>
+</li>
+<li><p>Check what nodes your tasks were scheduled on as above; they should all be on nodes bearing the <code>datacenter==east</code> label (<code>node-0</code> and <code>node-1</code>).</p>
+</li>
+<li><p>Remove your service, and schedule another, this time constrained to run only on worker nodes:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service rm east-deploy
+[centos@node-0 ~]$ docker service create --replicas 4 \
+    --constraint node.role==worker \
+    --name worker-only \
+    centos:7 ping 8.8.8.8
+</code></pre>
+<p>Once again, check where your <code>worker-only</code> service tasks got scheduled; they&#39;ll all be on <code>node-3</code>, your only worker.</p>
+<blockquote>
+<p><strong>Keep workload off of managers</strong> using these selectors, especially in production. If something goes badly wrong with a workload container and causes its host to crash, we don&#39;t want to take down a manager and possibly lose our raft consensus. As we&#39;ve seen, Swarm can recover from losing workers automatically; a lost manager consensus can be much harder to recover from.</p>
+</blockquote>
+</li>
+<li><p>Clean up by removing this service: <code>docker service rm worker-only</code>.</p>
+</li>
+</ol>
+<h2 id="scheduling-topology-aware-services">Scheduling Topology-Aware Services</h2>
+<p>Oftentimes, we want to schedule workload to be tolerant of faults in our datacenters; we wouldn&#39;t want every replica for a service on one power zone or one rack which can go down all at once, for example. </p>
+<ol>
+<li><p>Create a service using the <code>--placement-pref</code> flag to spread replicas across our <code>datacenter</code> label:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker service create --name my_proxy \
+    --replicas=2 --publish 8000:80 \
+    --placement-pref spread=node.labels.datacenter \
+    nginx
+</code></pre>
+<p>There should be <code>nginx</code> containers present on nodes with every possible value of the <code>node.labels.datacenter</code> label, one in <code>datacenter=east</code> nodes, and one in <code>datacenter=west</code> nodes.</p>
+</li>
+<li><p>Use <code>docker service ps my_proxy</code> as above to check that replicas got spread across the datacenter labels.</p>
+</li>
+<li><p>Clean up: <code>docker service rm my_proxy</code>.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we saw how to use resource allocations, global scheduling, labels and node properties to influence scheduling. A few best practices:</p>
+<ul>
+<li><strong>Always apply memory and CPU limits and reservations</strong>, and in essentially all cases, the limit should be less than or equal to the reservation to ensure nodes are never overprovisioned.</li>
+<li><strong>Keep workload off of manager</strong> as mentioned above, to prevent application logic bugs from taking down your manager consensus</li>
+<li><strong>Don&#39;t overconstrain your scheduler</strong>: it can be tempting to exert strict control over exactly what gets scheduled exactly where; don&#39;t. If a service is constrained to run on a very small set of nodes, and those nodes go down, the service will become unschedulable and suffer an outage. Let your orchestraor&#39;s scheduler make decisions as independently as possible in order to maximize workload resilience.</li>
+</ul>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

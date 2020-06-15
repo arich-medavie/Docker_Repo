@@ -1,0 +1,241 @@
+<html>
+<head>
+    <title>updating-applications.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="updating-applications">Updating Applications</h1>
+<p>Once we have defined an application as a Docker stack, we will periodically want to update its scale, configuration, and source code. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Scale up microservice components of a stack to improve application performance</li>
+<li>Define and trigger a rolling update of a service</li>
+<li>Define and trigger an automatic rollback of a failed service update</li>
+</ul>
+<h2 id="deploying-dockercoins">Deploying Dockercoins</h2>
+<p>For this exercise, we&#39;ll work with a toy application called <em>Dockercoins</em>. This application is a toy &#39;dockercoin&#39; miner, consisting of five microservices interacting in the following workflow:</p>
+<ol>
+<li>A <strong>worker</strong> container requests a random number from a random number generator <strong>rng</strong></li>
+<li>After receiving a random number, the worker pushes it to a <strong>hasher</strong> container, which computes a hash of this number.</li>
+<li>If the hash of the random number starts with 0, we accept this as a Dockercoin, and forward it to a <strong>redis</strong> container.</li>
+<li>Meanwhile, a <strong>webui</strong> container monitors the rate of coins being sent to redis, and visualizes this as a chart on a web page.</li>
+</ol>
+<ol>
+<li><p>Download the Dockercoins app from Github and change directory to ~/orchestration-workshop-net:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; git clone -b ee3.0-ws19 `
+    https://github.com/docker-training/orchestration-workshop-net.git
+
+PS: node-0 Administrator&gt; cd ~/orchestration-workshop-net
+</code></pre>
+</li>
+<li><p>The Dockercoins application is defined in <code>stack.yml</code>; have a look at this file, and make sure you understand what every key is doing. Once you&#39;re satisfied with this, deploy the stack:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack deploy `
+    -c stack.yml dockercoins
+</code></pre>
+<p>Visit the Dockercoins web frontend at <code>&lt;public IP&gt;:8000</code>, where <code>&lt;public IP&gt;</code> is the public IP of any node in your swarm. You should see Dockercoins getting mined at a rate of a few per second.</p>
+</li>
+</ol>
+<h2 id="scaling-up-an-application">Scaling Up an Application</h2>
+<p>If we&#39;ve written our services to be stateless, we might hope for linear performance scaling in the number of replicas of that service. For example, our <code>worker</code> service requests a random number from the <code>rng</code> service and hands it off to the <code>hasher</code> service; the faster we make those requests, the higher our throughput of Dockercoins should be, as long as there are no other confounding bottlenecks.</p>
+<ol>
+<li><p>Modify the <code>worker</code> service definition in <code>stack.yml</code> to set the number of replicas to create using the <code>deploy</code> and <code>replicas</code> keys:</p>
+<pre><code class="lang-yaml">worker:
+  image: training/dc_worker:ws19
+  networks:
+    - dockercoins
+  deploy:
+    replicas: 2
+</code></pre>
+</li>
+<li><p>Update your app by running the same command you used to launch it in the first place:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack deploy -c `
+    stack.yml dockercoins
+</code></pre>
+<p>Check the web frontend; after a few seconds, you should see about double the number of hashes per second, as expected.</p>
+</li>
+<li><p>Scale up even more by changing the <code>worker</code> replicas to 10. A small improvement should be visible, but certainly not an additional factor of 5. Something else is bottlenecking Dockercoins; let&#39;s investigate the two services <code>worker</code> is interacting with: <code>rng</code> and <code>hasher</code>.</p>
+</li>
+<li><p>First, we need to expose ports for the <code>rng</code> and <code>hasher</code> services, so we can probe their latency. Update their definitions in <code>stack.yml</code> with a <code>ports</code> key:</p>
+<pre><code class="lang-yaml">rng:
+  image: training/dc_rng:ws19
+  networks:
+    - dockercoins
+  ports:
+    - target: 80
+      published: 8001   
+
+hasher:
+  image: training/dc_hasher:ws19
+  networks:
+    - dockercoins
+  ports:
+    - target: 80
+      published: 8002
+</code></pre>
+<p>Update the services by redeploying the stack file:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack deploy `
+    -c stack.yml dockercoins
+</code></pre>
+<p>If this is successful, a <code>docker service ls</code> should show <code>rng</code> and <code>hasher</code> exposed on the appropriate ports.</p>
+</li>
+<li><p>With <code>rng</code> and <code>hasher</code> exposed, we can use <code>httping</code> to probe their latency; in both cases, <code>&lt;public IP&gt;</code> is the public IP of any node in your swarm:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; httping -c 5 &lt;public IP&gt;:8001
+PS: node-0 orchestration-workshop-net&gt; httping -c 5 &lt;public IP&gt;:8002
+</code></pre>
+<p><code>rng</code> is much slower to respond, suggesting that it might be the bottleneck. If this random number generator is based on an entropy collector (random voltage microfluctuations in the machine&#39;s power supply, for example), it won&#39;t be able to generate random numbers beyond a physically limited rate; we need more machines collecting more entropy in order to scale this up. This is a case where it makes sense to run exactly one copy of this service per machine, via <code>global</code> scheduling (as opposed to potentially many copies on one machine, or whatever the scheduler decides as in the default <code>replicated</code> scheduling).</p>
+</li>
+<li><p>Modify the definition of our <code>rng</code> service in <code>stack.yml</code> to be globally scheduled:</p>
+<pre><code class="lang-yaml">rng:
+  image: training/dc_rng:ws19
+  networks:
+    - dockercoins
+  deploy:
+    mode: global
+  ports:
+    - target: 80
+      published: 8001 
+</code></pre>
+</li>
+<li><p>Scheduling can&#39;t be changed on the fly, so we need to stop our app and restart it:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack rm dockercoins
+PS: node-0 orchestration-workshop-net&gt; docker stack deploy `
+    -c stack.yml dockercoins
+</code></pre>
+</li>
+<li><p>Check the web frontend again; you should finally see the factor of 10 improvement in performance versus a single worker container, from 3-4 coins per second to around 35.</p>
+</li>
+</ol>
+<h2 id="creating-rolling-updates">Creating Rolling Updates</h2>
+<p>Beyond scaling up an existing application, we&#39;ll periodically want to update the underlying source code of one or more of our components; Swarm provides mechanisms for rolling out updates in a controlled fashion that minimizes downtime.</p>
+<ol>
+<li><p>First, let&#39;s change one of our services a bit: open <code>orchestration-workshop-net/worker/Program.cs</code> in your favorite text editor, and find the following section:</p>
+<pre><code class="lang-java">private static void WorkOnce(){
+    Console.WriteLine(&quot;Doing one unit of work&quot;);
+    Thread.Sleep(100);  // 100 ms
+</code></pre>
+<p>Change the <code>100</code> to a <code>10</code>. Save the file, exit the text editor. </p>
+</li>
+<li><p>Rebuild the worker image with a tag of <code>&lt;Docker ID&gt;/dc_worker:ws19-1.1</code>, and push it to Docker Hub.</p>
+</li>
+<li><p>Change the <code>image:</code> value for the <code>worker</code> service in your <code>stack.yml</code> file to that of the image you just pushed.</p>
+</li>
+<li><p>Start the update:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack deploy `
+    -c stack.yml dockercoins
+</code></pre>
+<p>Use <code>docker stack ps dockercoins</code> every couple of seconds to watch tasks get updated to our new 1.1 image one at a time.</p>
+</li>
+</ol>
+<h2 id="parallelizing-updates">Parallelizing Updates</h2>
+<ol>
+<li><p>We can also set our updates to run in batches by configuring some options associated with each service. Change the update parallelism to 2 and the delay to 5 seconds on the <code>worker</code> service by editing its definition in <code>stack.yml</code>:</p>
+<pre><code class="lang-yaml">worker:
+  image: training/dc_worker:ws19
+  networks:
+    - dockercoins
+  deploy:
+    replicas: 10
+    update_config:
+      parallelism: 2
+      delay: 5s
+</code></pre>
+</li>
+<li><p>Roll back the <code>worker</code> service to its original image:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack deploy `
+    -c stack.yml dockercoins
+</code></pre>
+<p>Run <code>docker service ps dockercoins_worker</code> every couple of seconds; you should see pairs of worker tasks getting shut down and replaced with the original version, with a 5 second delay between updates (this is perhaps easiest to notice by examining the <code>NAME</code> column - every worker replica will start with one dead task from when you upgraded in the last step; you should be able to notice pairs of tasks with two dead ancestors as this rollback moves through the list, two at a time).</p>
+</li>
+</ol>
+<h2 id="auto-rollback-failed-updates">Auto-Rollback Failed Updates</h2>
+<p>In the event of an application or container failure on deployment, we&#39;d like to automatically roll the update back to the previous version.</p>
+<ol>
+<li><p>Update the <code>worker</code> service with some parameters to define rollback:</p>
+<pre><code class="lang-yaml">worker:
+  image: training/dc_worker:ws19
+  networks:
+    - dockercoins
+  deploy:
+    replicas: 10
+    update_config:
+      parallelism: 2
+      delay: 5s
+      failure_action: rollback
+      max_failure_ratio: 0.2
+      monitor: 20s
+</code></pre>
+<p>These parameters will trigger a rollback if more than 20% of services tasks fail in the first 20 seconds after an update.</p>
+</li>
+<li><p>Update your stack to make sure the rollback parameters are in place before you attempt to update your image:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack deploy `
+    -c stack.yml dockercoins
+</code></pre>
+</li>
+<li><p>Make a broken version of the <code>worker</code> service to trigger a rollback with; try removing all the <code>using</code> commands at the top of <code>worker/Program.cs</code>, for example. Then rebuild the worker image with a tag <code>&lt;Docker ID&gt;/dc_worker:bugged</code>, push it to Docker Hub, and attempt to update your service:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker image build `
+    -t &lt;Docker ID&gt;/dc_worker:bugged worker
+PS: node-0 orchestration-workshop-net&gt; docker image push `
+    &lt;Docker ID&gt;/dc_worker:bugged
+</code></pre>
+</li>
+<li><p>Update your <code>stack.yml</code> file to use the <code>:bugged</code> tag for the <code>worker</code> service, and redeploy your stack as above.</p>
+</li>
+<li><p>Use <code>docker stack ps dockercoins</code> to watch the <code>:bugged</code> tag getting deployed, failing, and rolling back automatically over the next minute or two:</p>
+<pre><code class="lang-powershell">NAME                       IMAGE              CURRENT STATE                
+dockercoins_worker.1       dc_worker:ws19     Running 2 minutes ago
+dockercoins_worker.2       dc_worker:ws19     Running 2 minutes ago
+dockercoins_worker.3       dc_worker:ws19     Running about a minute ago
+ \_ dockercoins_worker.3   dc_worker:bugged   Failed about a minute ago   
+ \_ dockercoins_worker.3   dc_worker:bugged   Failed about a minute ago    
+ \_ dockercoins_worker.3   dc_worker:bugged   Failed about a minute ago    
+dockercoins_worker.4       dc_worker:ws19     Running about a minute ago
+ \_ dockercoins_worker.4   dc_worker:bugged   Failed about a minute ago    
+dockercoins_worker.5       dc_worker:ws19     Running about a minute ago
+ \_ dockercoins_worker.5   dc_worker:bugged   Failed about a minute ago 
+ \_ dockercoins_worker.5   dc_worker:bugged   Failed about a minute ago  
+ \_ dockercoins_worker.5   dc_worker:bugged   Failed about a minute ago   
+dockercoins_worker.6       dc_worker:ws19     Running 2 minutes ago
+dockercoins_worker.7       dc_worker:ws19     Running 2 minutes ago
+dockercoins_worker.8       dc_worker:ws19     Running 2 minutes ago
+dockercoins_worker.9       dc_worker:ws19     Running about a minute ago
+ \_ dockercoins_worker.9   dc_worker:bugged   Failed about a minute ago  
+dockercoins_worker.10      dc_worker:ws19     Running 2 minutes ago
+</code></pre>
+<p>For example, this table indicates that tasks 3, 4, 5 and 9 all attempted to update to the <code>:bugged</code> tag, failed, and successfully rolled back to the <code>:ws19</code> tag (the <code>\_</code> symbol is meant to indicate failed ancestors for an individual task; so <code>dockercoins_worker.3</code> above made three failed attempts to run the <code>:bugged</code> image before rolling back).</p>
+</li>
+<li><p>Clean up by removing your stack:</p>
+<pre><code class="lang-powershell">PS: node-0 orchestration-workshop-net&gt; docker stack rm dockercoins
+</code></pre>
+</li>
+</ol>
+<h2 id="optional-challenge-improving-dockercoins">Optional Challenge: Improving Dockercoins</h2>
+<p>Dockercoins&#39; stack file is very rudimentary, and not at all suitable for production. If you have time, try modifying Dockercoins&#39; stack file with some of the best practices you&#39;ve learned in this workshop; think about things like security, operational stability, latency and scheduling. This activity is best done in groups! Partner up with someone else and discuss what improvements you can make, then try them out and make sure they work as you expected.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we explored deploying and redeploying an application as stacks and services. Note that relaunching a running stack updates all the objects it manages in the most non-disruptive way possible; there is usually no need to remove a stack before updating it. In production, rollback contingencies should always be used to cautiously upgrade images, cutting off potential damage before an entire service is taken down.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

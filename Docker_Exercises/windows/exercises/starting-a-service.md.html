@@ -1,0 +1,129 @@
+<html>
+<head>
+    <title>starting-a-service.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="starting-a-service">Starting a Service</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Schedule a docker service across a swarm</li>
+<li>Predict and understand the scoping behavior of docker overlay networks</li>
+<li>Scale a service on swarm up or down</li>
+</ul>
+<h2 id="creating-an-overlay-network-and-service">Creating an Overlay Network and Service</h2>
+<ol>
+<li><p>Create a multi-host overlay network to connect your service to:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker network create --driver overlay my_overlay
+</code></pre>
+</li>
+<li><p>Verify that the network subnet was taken from the address pool defined when creating your swarm::</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker network inspect my_overlay
+
+...
+&quot;Subnet&quot;: &quot;10.85.0.0/25&quot;,
+&quot;Gateway&quot;: &quot;10.85.0.1&quot;
+...
+</code></pre>
+<p>The overlay network has been assigned a subnet from the address pool we specified when creating our swarm.</p>
+</li>
+<li><p>Create a service featuring a <code>training/probe</code>, which sends a periodic network request to docker.com to see if the internet is reachable from your container:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker service create --name prober `
+    --network my_overlay training/probe:ws19
+</code></pre>
+<p>Note the syntax is a lot like <code>docker container run</code>; an image (<code>training/probe:ws19</code>) is specified after some flags, which conainerizes a default process.</p>
+</li>
+<li><p>Get some information about the currently running services:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker service ls
+
+ID             NAME     MODE         REPLICAS   IMAGE                      
+k6caojtyqp2p   prober   replicated   1/1        training/probe:ws19
+</code></pre>
+</li>
+<li><p>Check which node the container was created on:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker service ps prober
+
+ID       NAME       IMAGE                      NODE     DESIRED STATE   ...
+jot...   prober.1   docker service ps prober   node-1   Running         ...
+</code></pre>
+<p>In my case, the one container we started for this service was scheduled on <code>node-1</code>.</p>
+</li>
+<li><p>Scale up the number of concurrent tasks that our <code>prober</code> service is running to 3:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker service update prober --replicas=3
+
+prober
+overall progress: 3 out of 3 tasks
+1/3: running   [==================================================&gt;]
+2/3: running   [==================================================&gt;]
+3/3: running   [==================================================&gt;]
+verify: Service converged
+</code></pre>
+</li>
+<li><p>Now run <code>docker service ps prober</code> to inspect the service. How were tasks distributed across your swarm?</p>
+</li>
+<li><p>Run <code>docker network inspect my_overlay</code> on any node that has a <code>prober</code> task scheduled on it. Look for the <code>Containers</code> key in the output; it indicates the containers on this node attached to the <code>my_overlay</code> network. Also, look for the <code>Peers</code> list; mine looks like:</p>
+<pre><code class="lang-json">&quot;Peers&quot;: [
+    {
+        &quot;Name&quot;: &quot;967da1a0349f&quot;,
+        &quot;IP&quot;: &quot;10.10.12.136&quot;
+    },
+    {
+        &quot;Name&quot;: &quot;d1cd9f4a25bb&quot;,
+        &quot;IP&quot;: &quot;10.10.35.36&quot;
+    },
+    {
+        &quot;Name&quot;: &quot;d7e00d4376ca&quot;,
+        &quot;IP&quot;: &quot;10.10.57.19&quot;
+    }
+]
+</code></pre>
+<p>Challenge: Looking at your own <code>Peers</code> list, what do the IPs correspond to?</p>
+</li>
+</ol>
+<h2 id="inspecting-service-logs">Inspecting Service Logs</h2>
+<ol>
+<li><p>Manager nodes can assemble all logs for all tasks of a given service:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker service logs --tail 100 prober
+</code></pre>
+<p>The last 100 lines of logs for all 3 probe containers will be displayed.</p>
+</li>
+<li><p>If instead you&#39;d like to see the logs of a single task, on a manager node run <code>docker service ps prober</code>, choose any task ID, and run <code>docker service logs &lt;task ID&gt;</code>.</p>
+</li>
+</ol>
+<h2 id="cleanup">Cleanup</h2>
+<ol>
+<li><p>Remove all existing services, in preparation for future exercises:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker service rm $(docker service ls -q)
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we saw the basics of creating, scheduling and updating services. A common mistake people make is thinking that a service is just the containers scheduled by the service; in fact, a Docker service is the definition of <em>desired state</em> for those containers. Changing a service definition does not in general change containers directly; it causes them to get rescheduled by Swarm in order to match their new desired state.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

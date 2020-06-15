@@ -1,0 +1,144 @@
+<html>
+<head>
+    <title>routing-to-services.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="routing-traffic-to-docker-services">Routing Traffic to Docker Services</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Route traffic to a Docker service from within the swarm using dnsrr DNS lookups</li>
+<li>Route traffic to a Docker service from outside the swarm using host port publishing</li>
+</ul>
+<h2 id="routing-cluster-internal-traffic">Routing Cluster-Internal Traffic</h2>
+<ol>
+<li><p>By <em>cluster-internal traffic</em>, we mean traffic from originating from a container running on your swarm, sending a request to another container running on the same swarm. Let&#39;s create a stack with two such services, attached to a custom overlay network; create a file <code>net-demo.yaml</code> with the following content:</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot;    
+
+services:
+  destination:
+    image: training/whoami-windows:ws19
+    deploy:
+      replicas: 3
+    networks:
+      - demonet
+
+  origin:
+    image: mcr.microsoft.com/powershell:preview-nanoserver-1809
+    command: [&quot;pwsh.exe&quot;, &quot;-Command&quot;, &quot;Start-Sleep&quot;, &quot;100000&quot;]
+    networks:
+      - demonet          
+
+networks:
+  demonet:
+    driver: overlay
+</code></pre>
+<p>Here our <code>destination</code> service is using the <code>deploy:replicas</code> key to ask for three replica containers based on the <code>training/whoami-windows</code> image; this image serves a simple web page on port 5000 that reports the ID of the container its running in. Our <code>origin</code> service is using the <code>command</code> key to define what process to run in a container based on the <code>mcr.microsoft.com/powershell:preview-nanoserver-1809</code> image; in this case we just put it to sleep so we have a running container we can attach to and interact with later.</p>
+</li>
+<li><p>Deploy your stack, and find out what node your <code>origin</code> container is running on:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker stack deploy -c net-demo.yaml netstack
+
+PS: node-0 Administrator&gt; docker stack ps netstack
+
+ID       NAME                     IMAGE                       NODE     DESIRED STATE
+73i...   netstack_destination.1   training/whoami-windows     node-2   Running       
+y8i...   netstack_origin.1        nanoserver:10.0.14393.2551  node-0   Running       
+pgw...   netstack_destination.2   training/whoami-windows     node-1   Running       
+thi...   netstack_destination.3   training/whoami-windows     node-3   Running       
+</code></pre>
+</li>
+<li><p>Connect to the node running your <code>origin</code> container (<code>node-0</code> in the example above), and create a powershell inside that container:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker container ls
+
+CONTAINER ID        IMAGE                        COMMAND       
+3047dbb47a7a        nanoserver:10.0.14393.2551   Start-Sleep...
+
+PS: node-0 Administrator&gt; docker container exec -it &lt;container ID&gt; pwsh.exe
+
+PS C:\&gt;
+</code></pre>
+</li>
+<li><p>Probe the DNS resolution of your <code>destination</code> service:</p>
+<pre><code class="lang-powershell">PS C:\&gt; [System.Net.Dns]::GetHostEntry(&#39;destination&#39;)
+
+HostName    Aliases AddressList
+--------    ------- -----------
+destination {}      {10.85.6.130}
+</code></pre>
+<p>By default, swarm services are assigned a <em>virtual IP</em>, and their service name will DNS resolve to this VIP inside any container attached to the same Docker network. Try doing <code>docker service inspect netstack_destination</code> back on a manager to confirm that the IP you resolved above is what&#39;s listed for the virtual IP for this service.</p>
+</li>
+<li><p>Try contacting your <code>destination</code> service using the VIP you found above:</p>
+<pre><code class="lang-powershell">PS C:\&gt; (Invoke-WebRequest http://&lt;virtual IP&gt;:5000).Content
+
+I am 02FF20A20861
+</code></pre>
+<p>Execute the same a few more times to see swarm&#39;s default load balancing: subsequent requests get routed across all <code>whoami</code> containers in round robin fashion.</p>
+</li>
+<li><p>Clean up by removing your stack: <code>docker stack rm netstack</code>.</p>
+</li>
+</ol>
+<h2 id="routing-cluster-external-traffic">Routing Cluster-External Traffic</h2>
+<p>In the last section, we routed traffic from one Docker service to another within the same swarm. If we want to route ingress traffic from an external network to a service, we have to expose it on the <em>routing mesh</em>.</p>
+<ol>
+<li><p>Create a new stack file <code>mesh.yaml</code>:</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot;
+
+services:
+  destination:
+    image: training/whoami-windows:ws19
+    deploy:
+      replicas: 3
+    ports:
+      - 8080:5000
+</code></pre>
+<p>Here the <code>ports:</code> key is specifying that traffic arriving at port 8080 on <em>any node in the swarm</em> should be forwarded to port 5000 of our <code>whoami</code> container.</p>
+</li>
+<li><p>Deploy your stack:</p>
+<pre><code class="lang-bash">PS: node-0 Administrator&gt; docker stack deploy -c mesh.yaml mesh
+</code></pre>
+</li>
+<li><p>List your service and observe which nodes the containers got scheduled on:</p>
+<pre><code class="lang-bash">PS: node-0 Administrator&gt; docker service ls
+PS: node-0 Administrator&gt; docker service ps mesh_destination
+
+ID                  NAME                 IMAGE                 NODE  
+1wsqyjgznv0a        mesh_destination.1   whoami-windows:ws19   node-0     
+ljhr1dukx6v0        mesh_destination.2   whoami-windows:ws19   node-3     
+albbml1idsw4        mesh_destination.3   whoami-windows:ws19   node-2
+</code></pre>
+</li>
+<li><p>Visit the public IP of every one of your nodes on port 8080 in your browser; no matter which public IP you choose, your request will get routed to a <code>whoami</code> backend container - even if you visit the public IP of a node <em>not</em> running a <code>whoami</code> container. This is the mesh net in action (note that many browsers&#39; caching behavior will hide the round robin load balancing; if you want to see the load balancing in the browser, try using a &#39;history-less&#39; browser mode, closing and reopening the browser or completely purging history between each refresh).</p>
+</li>
+<li><p>Clean up by deleting your <code>mesh</code> stack.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you saw the basic service discovery and routing that Swarm enables via DNS lookup of service names, VIP routing and port forwarding across network namespaces. In general, using this networking plane to do our service discovery helps make our inter-service communication more robust against container failure. If we were communicating with a container directly by its IP, we would have to constantly monitor whether that container was still actually reachable at that IP; Swarm effectively does that for us when we communicate via DNS resolution of service names to VIPs, since a failed container will get pulled out of the virtual IP server&#39;s round-robin routing automatically. In the case of using the mesh net to route ingress traffic from outside our cluster, mapping the external port on <em>every</em> host in the swarm onto the service&#39;s VIP means our external load balancers (which is realistically the point of ingress for external traffic to our swarm), doesn&#39;t need to know anything about where our service is scheduled; it can simply send requests to any node in the swarm, and Docker handles the rest.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

@@ -1,0 +1,313 @@
+<html>
+<head>
+    <title>provisioning-swarm-config.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="provisioning-swarm-configuration">Provisioning Swarm Configuration</h1>
+<p>When deploying an application, especially one meant to be migrated across different environments, it&#39;s helpful to be able to provision configuration like environment variables and config files to your services in a modular, pluggable fashion. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Assemble application components together as a Docker stack</li>
+<li>Provision insecure configuration to service containers using <code>.env</code> files and Docker configs</li>
+<li>Provision secure configuration to service containers using Docker secrets</li>
+</ul>
+<h2 id="creating-a-stack">Creating a Stack</h2>
+<p>So far, we&#39;ve run individual services with <code>docker service create</code>. As we build more complex applications consisting of multiple components, we&#39;d like a way to capture them all in a single file we can version control and recreate; for this, we can use <em>stack files</em>.</p>
+<ol>
+<li><p>Create a file called <code>mystack.yaml</code> with the following content:</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot;    
+
+services:
+  db:
+    image: postgres:9.6
+    environment:
+        POSTGRES_PASSWORD: password
+</code></pre>
+<p>This simple stack file will create a single service named <code>db</code>, based on the <code>postgres:9.6</code> image, and set a default password.</p>
+<blockquote>
+<p>Docker stack file syntax is based on Docker Compose; we&#39;ll see numerous examples of this syntax in this workshop, but if you&#39;d like the full reference, see the docs at <a href="https://dockr.ly/2iHUpeX">https://dockr.ly/2iHUpeX</a>.</p>
+</blockquote>
+</li>
+<li><p>Deploy your stack:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack deploy -c mystack.yaml dbdemo
+</code></pre>
+<p>Your service is created, along with a default network for the stack (more on service networking in a future exercise).</p>
+</li>
+<li><p>List your stacks and, see its services:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack ls
+
+NAME                SERVICES            ORCHESTRATOR
+dbdemo              1                   Swarm
+
+[centos@node-0 ~]$ docker service ls  
+
+ID             NAME        MODE         REPLICAS   IMAGE        
+xb7cl9heahku   dbdemo_db   replicated   1/1        postgres:9.6   
+</code></pre>
+<p>By default, your service gets named as the stack (<code>dbdemo</code>), concatenated with the key you labeled your service with in your stack file (<code>db</code>).</p>
+</li>
+<li><p>Delete your stack:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack rm dbdemo
+</code></pre>
+</li>
+</ol>
+<h2 id="defining-and-using-env-files">Defining and Using <code>.env</code> Files</h2>
+<p>Many configurations don&#39;t have strong security needs, and can be stored and transmitted unencrypted. For these, we can use <em>Docker config</em> objects.</p>
+<ol>
+<li><p>Create a file called <code>myvars.env</code> listing environment variables to define inside your container:</p>
+<pre><code class="lang-bash">POSTGRES_USER=moby
+POSTGRES_DB=mydb
+</code></pre>
+<p>If defined at postgres startup, these environment variables will set the default username and database for postgres.</p>
+</li>
+<li><p>Modify your stack file so your <code>db</code> service consumes this <code>.env</code> file:</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot;    
+
+services:
+  db:
+    image: postgres:9.6
+    environment:
+        POSTGRES_PASSWORD: password
+    env_file:
+      - myvars.env
+</code></pre>
+</li>
+<li><p>Redeploy your stack:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack deploy -c mystack.yaml dbdemo
+</code></pre>
+</li>
+<li><p>We&#39;d like to confirm that the environment variables got set and had the desired effect; to do so, list all the tasks running for every service in your stack:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack ps dbdemo
+
+ID       NAME          IMAGE          NODE     DESIRED STATE   CURRENT STATE
+uil...   dbdemo_db.1   postgres:9.6   node-0   Running         Running about 
+                                                                  a minute ago
+</code></pre>
+<p>As expected, we have one service with one task, which got scheduled in my case on <code>node-0</code>.</p>
+</li>
+<li><p>Find the container corresponding to the single task started for your <code>db</code> service:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker inspect &lt;task ID&gt; | grep ContainerID
+
+                &quot;ContainerID&quot;: &quot;b2ffe30...&quot;,
+</code></pre>
+</li>
+<li><p>Confirm the environment variables you provisioned actually got set (note you&#39;ll have to run this on the node listed in the <code>NODE</code> column in the output of <code>docker stack ps dbdemo</code> above, <code>node-0</code> for me):</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker container inspect &lt;container ID&gt; | grep POSTGRES
+
+            &quot;POSTGRES_DB=mydb&quot;,
+            &quot;POSTGRES_PASSWORD=password&quot;,
+            &quot;POSTGRES_USER=moby&quot;,
+</code></pre>
+</li>
+<li><p>Also on the node running the postgres container, run a command line interface (<code>psql</code>) inside this container to confirm your config was used to correctly set up the default user and database:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker container exec -it &lt;container ID&gt; psql -U moby -d mydb
+
+psql (9.6.11)
+Type &quot;help&quot; for help.    
+
+mydb=# \du
+                                   List of roles
+ Role name |                         Attributes                         | Member of 
+-----------+------------------------------------------------------------+-----------
+ moby      | Superuser, Create role, Create DB, Replication, Bypass RLS | {}    
+
+mydb=# \q
+</code></pre>
+<p>We can see that the user <code>moby</code> and default database <code>mydb</code> were created as expected.</p>
+</li>
+</ol>
+<h2 id="defining-and-using-docker-configs">Defining and Using Docker Configs</h2>
+<p>The config we&#39;ve seen so far is centered around defining environment variables in our containers, but oftentimes we need entire configuration files or scripts to be available within our containerized environments. We can provision these flexibly in our stack definitions using <em>docker configs</em>.</p>
+<ol>
+<li><p>Create a database initialization script <code>db-init.sh</code>:</p>
+<pre><code class="lang-bash">#!/bin/bash
+set -e        
+
+psql -v ON_ERROR_STOP=1 --username &quot;$POSTGRES_USER&quot; --dbname &quot;$POSTGRES_DB&quot; &lt;&lt;-EOSQL
+    CREATE TABLE PRODUCTS(PRICE FLOAT, NAME TEXT);
+    INSERT INTO PRODUCTS VALUES(&#39;18.95&#39;, &#39;widget&#39;);
+    INSERT INTO PRODUCTS VALUES(&#39;1.45&#39;, &#39;sprocket&#39;);
+EOSQL
+</code></pre>
+</li>
+<li><p>On startup, the postgres container will automatically run any file <code>*.sh</code> found in the directory <code>/docker-entrypoint-initdb.d</code>. Modify your stack file to look like this:</p>
+<pre><code class="lang-bash">version: &quot;3.7&quot;    
+
+services:
+  db:
+    image: postgres:9.6
+    environment:
+        POSTGRES_PASSWORD: password
+    env_file:
+      - myvars.env
+    configs:
+      - source: initscript
+        target: /docker-entrypoint-initdb.d/init.sh  
+
+configs:
+  initscript:
+    file: ./db-init.sh
+</code></pre>
+<p>Here we see our first concrete example of composing two objects together in a stack file: our original service, and a new top-level key, <code>configs:</code>, which lists all the config objects we can provision to our service objects.</p>
+</li>
+<li><p>Update your stack:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack deploy -c mystack.yaml dbdemo
+</code></pre>
+<p>Notice we didn&#39;t actually delete the old version of our stack first; recreating a stack with the same name and stack file will apply updates to a running stack.</p>
+</li>
+<li><p>List and inspect your <code>config</code> objects:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker config ls
+
+ID                          NAME                CREATED             UPDATED
+hjrbeqqpe8l25r7u70sulung4   dbdemo_initscript   3 minutes ago       3 minutes ago
+
+[centos@node-0 ~]$ docker config inspect --pretty &lt;config ID&gt;
+
+ID:            hjrbeqqpe8l25r7u70sulung4
+Name:            dbdemo_initscript
+Labels:
+ - com.docker.stack.namespace=dbdemo
+Created at:                2019-01-30 15:36:31.953234447 +0000 utc
+Updated at:                2019-01-30 15:36:31.953234447 +0000 utc
+Data:
+#!/bin/bash
+set -e            
+
+psql -v ON_ERROR_STOP=1 --username &quot;$POSTGRES_USER&quot; --dbname &quot;$POSTGRES_DB&quot; &lt;&lt;-EOSQL
+    CREATE TABLE PRODUCTS(PRICE FLOAT, NAME TEXT);
+    INSERT INTO PRODUCTS VALUES(&#39;18.95&#39;, &#39;widget&#39;);
+    INSERT INTO PRODUCTS VALUES(&#39;1.45&#39;, &#39;sprocket&#39;);
+EOSQL
+</code></pre>
+<p>We can recover the plain-text contents of any config option in this manner.</p>
+</li>
+<li><p>Reconnect to your postgres database, and confirm the data got loaded correctly (remember to do this from whichever node is running your postgres container):</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker container exec -it &lt;container ID&gt; psql -U moby -d mydb
+psql (9.6.11)
+Type &quot;help&quot; for help.    
+
+mydb=# SELECT * FROM products;
+
+ price |   name   
+-------+----------
+ 18.95 | widget
+  1.45 | sprocket
+(2 rows)
+
+mydb=# \q
+</code></pre>
+</li>
+</ol>
+<h2 id="defining-and-using-docker-secrets">Defining and Using Docker Secrets</h2>
+<p>In everything we&#39;ve seen so far, our configurations are stored unencrypted and are recoverable directly from their definition. In some cases, this isn&#39;t good enough; when we want to store and distribute secure information like passwords or access tokens, we want this information to be encrypted by default. For this, we use <em>Docker secrets</em>.</p>
+<p>So far, we&#39;ve been setting a dummy password in plain text for our database, right in our stack file; this is obviously inappropriate in a realistic scenario. Postgres can also set the password for remote login based on the contents of the file with path specified in the <code>POSTGRES_PASSWORD_FILE</code> environment variable on startup; we&#39;ll use a secret to set this environment variable securely.</p>
+<ol>
+<li><p>On <code>node-0</code>, place your postgres password <code>12345678</code> in a file called <code>mypassword</code>.</p>
+</li>
+<li><p>Turn the contents of <code>mypassword</code> into a Docker secret:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker secret create password ./mypassword
+[centos@node-0 ~]$ rm mypassword
+</code></pre>
+<p>Note we immediately remove the plaintext <code>mypassword</code> - of course we don&#39;t want it sitting around in plain text for someone to find later.</p>
+</li>
+<li><p>Inspect your secret:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker secret inspect password
+
+[
+    {
+        &quot;ID&quot;: &quot;agxqp9v4zdch2igeh59zt1qyb&quot;,
+        &quot;Version&quot;: {
+            &quot;Index&quot;: 5548
+        },
+        &quot;CreatedAt&quot;: &quot;2019-01-30T15:50:45.035216925Z&quot;,
+        &quot;UpdatedAt&quot;: &quot;2019-01-30T15:50:45.035216925Z&quot;,
+        &quot;Spec&quot;: {
+            &quot;Name&quot;: &quot;password&quot;,
+            &quot;Labels&quot;: {}
+        }
+    }
+]
+</code></pre>
+<p>Unlike configs, Docker won&#39;t return the value of a secret at the command line once encrypted in the raft datastore. Only containers authorized to use this secret will be able to recover it in plain text.</p>
+</li>
+<li><p>By default, secrets are provisioned in containers as plaintext files at the path <code>/run/secrets/&lt;secretname&gt;</code>. Modify your stack file to consume your secret, and point to it with the <code>POSTGRES_PASSWORD_FILE</code> environment variable:</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot;    
+
+services:
+  db:
+    image: postgres:9.6
+    env_file:
+      - myvars.env
+    configs:
+      - source: initscript
+        target: /docker-entrypoint-initdb.d/init.sh  
+    secrets:
+      - password
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/password
+
+configs:
+  initscript:
+    file: ./db-init.sh
+
+secrets:
+  password:
+    external: true
+</code></pre>
+<p>Here we&#39;re adding a third top-level object, <code>secrets:</code>, to our stack; the <code>external: true</code> key indicates that we defined this object outside of our stack and are just using it here, which is a typical pattern for secrets so we can avoid having them sitting around in plain text at any time. </p>
+</li>
+<li><p>Update your stack, confirm the environment variables are set correctly, and check that the password is available at <code>/run/secrets/password</code> as expected:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack deploy -c mystack.yaml dbdemo
+
+[centos@node-0 ~]$ docker stack ps dbdemo
+ID                  NAME                IMAGE               NODE   
+n0c9efwva2ri        dbdemo_db.1         postgres:9.6        node-0
+
+[centos@node-0 ~]$ docker inspect &lt;task ID&gt; | grep ContainerID
+                &quot;ContainerID&quot;: &quot;c1c7cef...&quot;,
+
+[centos@node-0 ~]$ docker container inspect &lt;container ID&gt; | grep POSTGRES
+                &quot;POSTGRES_DB=mydb&quot;,
+                &quot;POSTGRES_PASSWORD_FILE=/run/secrets/password&quot;,
+                &quot;POSTGRES_USER=moby&quot;,
+
+[centos@node-0 ~]$ docker container exec &lt;container ID&gt; cat /run/secrets/password
+1234568
+</code></pre>
+<p>(Remember to do the <code>docker container ...</code> commands on the node the task is actually running on). With this secret configuration, our postgres password is available in plaintext only inside the container filesystem that it has been explicitly provisioned to in our stack file.</p>
+</li>
+<li><p>Clean up by removing your stack:</p>
+<pre><code class="lang-bash">[centos@node-0 ~]$ docker stack rm dbdemo
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we saw several different methods for defining and provisioning configurations, as well as our first example of a complete stack file for defining and composing all the elements of our application. Deciding what information to provision via configurations is an important architectural choice; in general, anything that&#39;s going to change when moving from environment to environment is a good candidate for a config, since env files, docker configs, and docker secrets are all modular and defined separately from the service definition itself; by separating configs in this way, we can just swap the config out when changing environments, without redefining our services. The (usually worse) alternative to provisioning by config is to include this information directly in the image; this is a good choice for information that is the same in all environments you plan on running that image in, but can lead to image management complexity and loss of portability if environment-specific information is hard-coded into the image. Of course, secure information like passwords should <em>never</em> be hard-coded into images; they should strictly be provisioned as Docker secrets, and consumed only from the temporary filesystem inside the container to which they are mounted.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

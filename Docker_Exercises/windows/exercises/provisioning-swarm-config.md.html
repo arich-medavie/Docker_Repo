@@ -1,0 +1,270 @@
+<html>
+<head>
+    <title>provisioning-swarm-config.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="provisioning-swarm-configuration">Provisioning Swarm Configuration</h1>
+<p>When deploying an application, especially one meant to be migrated across different environments, it&#39;s helpful to be able to provision configuration like environment variables and config files to your services in a modular, pluggable fashion. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Assemble application components together as a Docker stack</li>
+<li>Provision insecure configuration to service containers using <code>.env</code> files and Docker configs</li>
+<li>Provision secure configuration to service containers using Docker secrets</li>
+</ul>
+<h2 id="creating-a-stack">Creating a Stack</h2>
+<p>So far, we&#39;ve run individual services with <code>docker service create</code>. As we build more complex applications consisting of multiple components, we&#39;d like a way to capture them all in a single file we can version control and recreate; for this, we can use <em>stack files</em>.</p>
+<ol>
+<li><p>Create a file called <code>mystack.yaml</code> with the following content:</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot; 
+
+services:
+  whoami:
+    image: training/whoami-windows:ws19
+    deploy:
+      mode: global
+    ports:
+      - target: 5000
+        published: 8080
+</code></pre>
+<p>This stack file will create a single service named <code>whoami-windows</code>, based on the <code>training/whoami-windows:ws19</code> image, schedule it globally, and make the <code>whoami</code> response reachable on port 8080 of any host in the cluster.</p>
+<blockquote>
+<p>Docker stack file syntax is based on Docker Compose; we&#39;ll see numerous examples of this syntax in this workshop, but if you&#39;d like the full reference, see the docs at <a href="https://dockr.ly/2iHUpeX">https://dockr.ly/2iHUpeX</a>.</p>
+</blockquote>
+</li>
+<li><p>Deploy your stack:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker stack deploy -c mystack.yaml stackdemo
+</code></pre>
+<p>Your service is created, along with a default network for the stack (more on service networking in a future exercise).</p>
+</li>
+<li><p>List your stacks and, see its services:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker stack ls
+
+NAME                SERVICES            ORCHESTRATOR
+stackdemo           1                   Swarm
+
+PS: node-0 Administrator&gt; docker service ls  
+
+ID      NAME              MODE    REPLICAS  IMAGE
+bon...  stackdemo_whoami  global  4/4       training/whoami-windows:ws19
+</code></pre>
+<p>By default, your service gets named as the stack (<code>stackdemo</code>), concatenated with the key you labeled your service with in your stack file (<code>whoami</code>).</p>
+</li>
+<li><p>Make sure everything is working as expected by visiting the Who Am I response at <code>http://&lt;public IP&gt;:8080</code>, where <code>&lt;public IP&gt;</code> is the public IP of any node in your swarm - by default, Swarm uses its <em>layer 4 mesh net</em> to route request arriving at the exposed port (8080) on <em>any</em> host in the swarm to the appropriate backend containers.</p>
+</li>
+</ol>
+<h2 id="defining-and-using-docker-configs">Defining and Using Docker Configs</h2>
+<p>Above, we created a simple website with four replicas; we&#39;d like to set up a load balancer to direct traffic to our website replicas, but we don&#39;t want to have to create a special load balancer image just for this one task; we&#39;d rather use a generic load balancer image, and provision it with the appropriate config at startup. For this we can use a <em>docker config</em>.</p>
+<ol>
+<li><p>Create an nginx configuration file called <code>nginx.conf</code>, changing the lines with <code>&lt;node-x public IP&gt;</code> to the public IPs of each of your swarm nodes:</p>
+<pre><code class="lang-powershell">worker_processes  1;    
+
+events {
+    worker_connections  1024;
+}    
+
+stream {
+    upstream myapp {
+        server &lt;node-0 public IP&gt;:8080;
+        server &lt;node-1 public IP&gt;:8080;
+        server &lt;node-2 public IP&gt;:8080;
+        server &lt;node-3 public IP&gt;:8080;
+    }    
+
+    server {
+        listen 80;
+        proxy_pass myapp;
+    }
+}
+</code></pre>
+</li>
+<li><p>Modify your stack file to add in a proxy service, using this config file as a Docker config:</p>
+<pre><code class="lang-powershell">version: &quot;3.7&quot;        
+
+services:
+  whoami:
+    image: training/whoami-windows:ws19
+    deploy:
+      mode: global
+    ports:
+      - target: 5000
+        published: 8080    
+
+  proxy:
+    image: training/win-nginx:ee3.0-ws19
+    ports:
+      - target: 80
+        published: 8001     
+    configs:
+      - source: nginxconf
+        target: C:\nginx\nginx-1.12.0\conf\nginx.conf    
+
+configs:
+  nginxconf:
+    file: .\nginx.conf
+</code></pre>
+<p>Here we&#39;ve added a new top level object, <code>configs</code>, that lists Docker config objects (just <code>nginxconf</code> in this example), which each specify a file to be populated by. In our <code>proxy</code> service we mount this config by name, and give it a path to mount to.</p>
+</li>
+<li><p>Update your stack:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker stack deploy -c mystack.yaml stackdemo
+</code></pre>
+<p>Note this is the exact same command you used to create the stack in the first place; recreating an existing stack will apply only the updates since your last deploy.</p>
+</li>
+<li><p>List and inspect your <code>config</code> objects:</p>
+<pre><code class="lang-powershell">PS: node-0 Administrator&gt; docker config ls
+
+ID                     NAME                  CREATED              UPDATED
+9k8qm1en5e7t5tn7q...   stackdemo_nginxconf   About a minute ago   About a minute ago
+
+PS: node-0 Administrator&gt; docker config inspect --pretty &lt;config ID&gt;
+
+ID:                     9k8qm1en5e7t5tn7qyloi2pf0
+Name:                   stackdemo_nginxconf
+Labels:
+ - com.docker.stack.namespace=stackdemo
+Created at:             2019-02-03 00:44:37.9298585 +0000 utc
+Updated at:             2019-02-03 00:44:37.9298585 +0000 utc
+Data:
+worker_processes  1;    
+
+events {
+    worker_connections  1024;
+}    
+
+stream {
+    upstream myapp {
+        server 3.92.18.65:8080;
+        server 3.87.220.140:8080;
+        server 3.80.99.91:8080;
+        server 3.90.223.203:8080;
+    }    
+
+    server {
+        listen 80;
+        proxy_pass myapp;
+    }
+}
+</code></pre>
+<p>We can recover the plain-text contents of any config option in this manner.</p>
+</li>
+<li><p>Make sure this all worked as expected by visiting port 8001 (the public port for your <code>nginx</code> service) and make sure you can see the <code>whoami</code> response, proving your proxy is routing to your simple website being served on 8080.</p>
+</li>
+<li><p>Clean up: <code>docker stack rm stackdemo</code></p>
+</li>
+</ol>
+<h2 id="defining-and-using-env-files-and-secrets">Defining and Using .env Files and Secrets</h2>
+<p>Above, we provisioned an entire configuration file to a service via a docker config object. Often we only want to provision individual tokens, like paths or passwords; furthermore, these tokens can have varying security needs. For non-secure information, we can specify <em>environment variables</em> in our containers, and for sensitive information we should use <em>docker secrets</em>, as follows.</p>
+<ol>
+<li><p>Create a new directory <code>image-secrets</code> on <code>node-0</code> and navigate to this folder. In this folder create a file named <code>app.py</code> and add the following content; this is a Python script that consumes a password from a file with a path specified by the environment variable <code>PASSWORD_FILE</code>:</p>
+<pre><code class="lang-python">import os
+print(&#39;***** Docker Secrets ******&#39;)
+print(&#39;USERNAME: {0}&#39;.format(os.environ[&#39;USERNAME&#39;]))
+
+fname = os.environ[&#39;PASSWORD_FILE&#39;]
+with open(fname) as f:
+    content = f.readlines()
+
+print(&#39;PASSWORD_FILE: {0}&#39;.format(fname))
+print(&#39;PASSWORD: {0}&#39;.format(content[0]))
+</code></pre>
+<p>For optimal security, secret information like passwords shouldn&#39;t be stored in an environment variable directly; Docker will provision the secret to the container as a file. We can then define an environment variable that points at the path of this secret file, which our script can then consume.</p>
+</li>
+<li><p>Create a file called <code>Dockerfile</code> with the following content:</p>
+<pre><code class="lang-powershell">FROM python:3.8.0-windowsservercore-1809
+RUN mkdir -p /app
+WORKDIR /app
+COPY . /app
+CMD python ./app.py; sleep 100000
+</code></pre>
+</li>
+<li><p>Build the image and push it to a registry so it&#39;s available to all nodes in your swarm:</p>
+<pre><code class="lang-powershell">PS: node-0 image-secrets&gt; docker image build -t &lt;Docker ID&gt;/secrets-demo:1.0 .
+PS: node-0 image-secrets&gt; docker image push &lt;Docker ID&gt;/secrets-demo:1.0
+</code></pre>
+</li>
+<li><p>Next let&#39;s create a secret. In the current directory create a file called <code>password.txt</code> and add the value <code>my-pass</code> to it. Turn the contents of that file into a docker secret:</p>
+<pre><code class="lang-powershell">PS: node-0 image-secrets&gt; docker secret create mypass ./password.txt
+PS: node-0 image-secrets&gt; rm password.txt
+</code></pre>
+<p>Remember to delete the plaintext copy of your password in <code>password.txt</code>. Swarm encrypts your secret value and won&#39;t return it in plain text, so with this file removed your secret is secure at rest on your management cluster.</p>
+</li>
+<li><p>Define your non-secure environment variables in a file called <code>myconf.env</code>:</p>
+<pre><code class="lang-powershell">PASSWORD_FILE=C:\ProgramData\Docker\secrets\mypass
+</code></pre>
+<p>By default, Docker will place a secret called <code>mypass</code> at the path <code>C:\ProgramData\Docker\secrets\mypass</code>, which we&#39;re going to inform our containerized process of via and environment variable defined in this env file.</p>
+</li>
+<li><p>Create a stack file called <code>secretstack.yaml</code> that makes a service out of your <code>secrets-demo:1.0</code> image, and provisions it with your secret password and environment variable (don&#39;t forget to change <code>&lt;Docker ID&gt;</code> to your Docker Hub ID):</p>
+<pre><code class="lang-yaml">version: &quot;3.7&quot;    
+
+services:
+  myapp:
+    image: &lt;Docker ID&gt;/secrets-demo:1.0
+    env_file:
+      - myconf.env 
+    secrets:
+      - mypass
+
+secrets:
+  mypass:
+    external: true
+</code></pre>
+<p>Here we introduce a few keys:</p>
+<ul>
+<li><code>services:env_file</code> lists files that contain key/value pairs like our <code>myconf.env</code> to be declared as environment variables in the containers for this service</li>
+<li><code>services:secrets</code> lists docker secrets, created as above, to provision to the containers for this service. By default, the content of the secret will be available as a file at the path <code>C:\ProgramData\Docker\secrets\&lt;secret name&gt;</code></li>
+<li>The top level <code>secrets</code> key lists secrets created as above, for consumption in your services.</li>
+</ul>
+</li>
+<li><p>Deploy your stack, list the services on you swarm, and get the logs for your single service:</p>
+<pre><code class="lang-powershell">PS: node-0 image-secrets&gt; docker stack deploy -c .\secretstack.yaml secretdemo
+Creating network secretdemo_default
+Creating service secretdemo_destination
+
+PS: node-0 image-secrets&gt;docker service ls
+
+ID            NAME              MODE        REPLICAS  IMAGE                     
+8aoeanv90dqm  secretdemo_myapp  replicated  1/1       training/secrets-demo:1.0
+
+PS: node-0 image-secrets&gt; docker service logs &lt;service ID&gt;
+
+secretdemo_myapp.1.xxx@node-0  | ***** Docker Secrets ******
+secretdemo_myapp.1.xxx@node-0  | USERNAME: ContainerAdministrator
+secretdemo_myapp.1.xxx@node-0  | PASSWORD_FILE: C:\ProgramData\Docker\secrets\mypass
+secretdemo_myapp.1.xxx@node-0  | PASSWORD: my-pass
+</code></pre>
+<p>If all has been successful, your script will have used the environment variable <code>PASSWORD_FILE</code> to locate your secret password, and read it from there. Of course this is just a toy script to demonstrate usage, but the same pattern of provisioning secure information through secrets pointed at by environment variables is a common best practice for handling this type of config.</p>
+</li>
+<li><p>Optional: Locate the node running your single container for this service, and use <code>docker container inspect</code> on it. Notice all the environment variables defined in the container are visible in the <code>Env:</code> block of the output. A common mistake when provisioning configuration is to provide passwords directly as environment variables; do that, and those passwords will be exposed in plain text to anyone who has inspect access to your containers.</p>
+</li>
+<li><p>Clean up: <code>docker stack rm secretdemo</code></p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we saw several different methods for defining and provisioning configurations, as well as a few examples of stack files for defining and composing all the elements of our application. Deciding what information to provision via configurations is an important architectural choice; in general, anything that&#39;s going to change when moving from environment to environment is a good candidate for a config, since env files, docker configs, and docker secrets are all modular and defined separately from the service definition itself; by separating configs in this way, we can just swap the config out when changing environments, without redefining our services. The (usually worse) alternative to provisioning by config is to include this information directly in the image; this is a good choice for information that is the same in all environments you plan on running that image in, but can lead to image management complexity and loss of portability if environment-specific information is hard-coded into the image. Of course, secure information like passwords should <em>never</em> be hard-coded into images; they should strictly be provisioned as Docker secrets, and consumed only from the filesystem inside the container to which they are mounted.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

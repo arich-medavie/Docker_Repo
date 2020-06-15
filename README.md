@@ -19,7 +19,8 @@ systemd-cgtop
 docker container run
   -it #interactive, terminal
   -d background from main tty
-  exec <specific command>
+  -v <volname>:<container mount point>
+    
 
 docker container ls
   ls -a #lists even expired / stopped / quit containers

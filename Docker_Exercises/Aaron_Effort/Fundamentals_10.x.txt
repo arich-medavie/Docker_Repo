@@ -1,0 +1,125 @@
+[centos@node-0 Exercise_10]$ docker image pull postgres:9-alpine
+[centos@node-0 Exercise_10]$ docker image inspect postgres:9-alpine
+[
+    {
+        "Id": "sha256:45f463e53bc1f91b5369a241867cdfec1eae6b8b3987f3d2da2fd409241d22b9",
+        "RepoTags": [
+            "postgres:9-alpine"
+        ],
+        "RepoDigests": [
+            "postgres@sha256:afca870b6a68d0dfa07c0ad2b483ff23dfbcfc191b377f87545831533f097703"
+        ],
+        "Parent": "",
+        "Comment": "",
+        "Created": "2020-06-11T23:23:38.981989694Z",
+        "Container": "523f3fba57e7044a2a926c4c37c0aac4bc0bbd05b3fa830a8a1a9edd0951caa8",
+        "ContainerConfig": {
+            "Hostname": "523f3fba57e7",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "5432/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=en_US.utf8",
+                "PG_MAJOR=9.6",
+                "PG_VERSION=9.6.18",
+                "PG_SHA256=517ec282b785e6d22f360c30ba0c5e2a506fca5ca07dcc545427511d94c89999",
+                "PGDATA=/var/lib/postgresql/data"
+            ],
+            "Cmd": [
+                "/bin/sh",
+                "-c",
+                "#(nop) ",
+                "CMD [\"postgres\"]"
+            ],
+            "ArgsEscaped": true,
+            "Image": "sha256:3bd11f5b8d297c144b947d4de61fda751ce9c36cd9aece47852242f695878bc8",
+            "Volumes": {
+                "/var/lib/postgresql/data": {}
+            },
+            "WorkingDir": "",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {}
+        },
+        "DockerVersion": "18.09.7",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "5432/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=en_US.utf8",
+                "PG_MAJOR=9.6",
+                "PG_VERSION=9.6.18",
+                "PG_SHA256=517ec282b785e6d22f360c30ba0c5e2a506fca5ca07dcc545427511d94c89999",
+                "PGDATA=/var/lib/postgresql/data"
+            ],
+            "Cmd": [
+                "postgres"
+            ],
+            "ArgsEscaped": true,
+            "Image": "sha256:3bd11f5b8d297c144b947d4de61fda751ce9c36cd9aece47852242f695878bc8",
+            "Volumes": {
+                "/var/lib/postgresql/data": {}
+            },
+            "WorkingDir": "",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": null
+[centos@node-0 Exercise_10]$ sudo docker container run --name some-postgres -v db_backing:/var/lib/postgresql/data -e POSTGRES_PASSWORD=password -d postgres:9-alpine
+fa7b196e1acc2363e948211e8932856895f7e79f31f2aabc047354832062a322
+[centos@node-0 Exercise_10]$ docker container exec -it some-postgres psql -U postgres
+psql (9.6.18)
+Type "help" for help.
+
+postgres=# CREATE TABLE PRODUCTS(PRICE FLOAT, NAME TEXT);
+CREATE TABLE
+postgres=# INSERT INTO PRODUCTS VALUES('18.95', 'widget');
+INSERT 0 1
+postgres=# INSERT INTO PRODUCTS VALUES('1.45', 'sprocket');
+INSERT 0 1
+postgres=# SELECT * FROM PRODUCTS;
+ price |   name
+-------+----------
+ 18.95 | widget
+  1.45 | sprocket
+(2 rows)
+
+postgres=# \q
+[centos@node-0 Exercise_10]$ docker container rm -f some-postgres
+some-postgres
+[centos@node-0 Exercise_10]$ sudo docker container run --name some-postgres -v db_backing:/var/lib/postgresql/data -e POSTGRES_PASSWORD=password -d postgres:9-alpine
+5a6413f9f420854ed38e140baf7ebee1137bb15af9cb6bdf6fb07b3ae28b56ff
+[centos@node-0 Exercise_10]$ docker container exec -it some-postgres psql -U postgres
+psql (9.6.18)
+Type "help" for help.
+
+postgres=# SELECT * FROM PRODUCTS;
+ price |   name
+-------+----------
+ 18.95 | widget
+  1.45 | sprocket
+(2 rows)

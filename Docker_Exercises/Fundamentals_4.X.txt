@@ -1,0 +1,553 @@
+[centos@node-0 ~]$ docker container run -d centos:7 ping 8.8.8.8
+Unable to find image 'centos:7' locally
+7: Pulling from library/centos
+524b0c1e57f8: Pull complete
+Digest: sha256:e9ce0b76f29f942502facd849f3e468232492b259b9d9f076f71b392293f1582
+Status: Downloaded newer image for centos:7
+6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c
+[centos@node-0 ~]$ docker container ls
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+6b1df6c7d76b        centos:7            "ping 8.8.8.8"      7 seconds ago       Up 6 seconds                            hardcore_mayer
+[centos@node-0 ~]$ docker container stop 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ docker container ls -a
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                       PORTS               NAMES
+6b1df6c7d76b        centos:7            "ping 8.8.8.8"      59 seconds ago      Exited (137) 6 seconds ago                       hardcore_mayer
+b4ad5b22eae2        hello-world         "/hello"            25 minutes ago      Exited (0) 25 minutes ago                        practical_sutherland
+[centos@node-0 ~]$ docker container start 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ docker container stop 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ docker container start -a 6b1df6c7d76b
+PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=109 time=1.27 ms
+64 bytes from 8.8.8.8: icmp_seq=3 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=4 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=5 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=6 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=7 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=8 ttl=109 time=1.15 ms
+^C
+--- 8.8.8.8 ping statistics ---
+8 packets transmitted, 8 received, 0% packet loss, time 7009ms
+rtt min/avg/max/mdev = 1.149/1.183/1.277/0.040 ms
+[centos@node-0 ~]$ docker container start 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ docker container logs -f 6b1df6c7d76b
+PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=3 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=4 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=5 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=6 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=7 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=8 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=9 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=10 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=11 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=12 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=13 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=14 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=15 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=16 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=17 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=18 ttl=109 time=1.13 ms
+64 bytes from 8.8.8.8: icmp_seq=19 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=20 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=21 ttl=109 time=1.12 ms
+64 bytes from 8.8.8.8: icmp_seq=22 ttl=109 time=1.39 ms
+64 bytes from 8.8.8.8: icmp_seq=23 ttl=109 time=1.13 ms
+64 bytes from 8.8.8.8: icmp_seq=24 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=25 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=26 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=27 ttl=109 time=1.26 ms
+64 bytes from 8.8.8.8: icmp_seq=28 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=29 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=30 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=31 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=32 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=33 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=34 ttl=109 time=1.22 ms
+64 bytes from 8.8.8.8: icmp_seq=35 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=36 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=37 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=38 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=39 ttl=109 time=1.22 ms
+64 bytes from 8.8.8.8: icmp_seq=40 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=41 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=42 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=43 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=44 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=45 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=46 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=47 ttl=109 time=1.24 ms
+64 bytes from 8.8.8.8: icmp_seq=48 ttl=109 time=1.19 ms
+64 bytes from 8.8.8.8: icmp_seq=49 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=50 ttl=109 time=1.19 ms
+64 bytes from 8.8.8.8: icmp_seq=51 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=52 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=53 ttl=109 time=1.17 ms
+PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=3 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=4 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=5 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=6 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=7 ttl=109 time=1.23 ms
+64 bytes from 8.8.8.8: icmp_seq=8 ttl=109 time=1.19 ms
+64 bytes from 8.8.8.8: icmp_seq=9 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=10 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=11 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=12 ttl=109 time=1.25 ms
+64 bytes from 8.8.8.8: icmp_seq=13 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=14 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=15 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=16 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=17 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=18 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=19 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=20 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=21 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=22 ttl=109 time=1.26 ms
+64 bytes from 8.8.8.8: icmp_seq=23 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=24 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=25 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=26 ttl=109 time=1.16 ms
+PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=109 time=1.27 ms
+64 bytes from 8.8.8.8: icmp_seq=3 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=4 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=5 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=6 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=7 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=8 ttl=109 time=1.15 ms
+
+--- 8.8.8.8 ping statistics ---
+8 packets transmitted, 8 received, 0% packet loss, time 7009ms
+rtt min/avg/max/mdev = 1.149/1.183/1.277/0.040 ms
+PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=109 time=1.21 ms
+64 bytes from 8.8.8.8: icmp_seq=3 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=4 ttl=109 time=1.13 ms
+64 bytes from 8.8.8.8: icmp_seq=5 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=6 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=7 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=8 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=9 ttl=109 time=1.13 ms
+64 bytes from 8.8.8.8: icmp_seq=10 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=11 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=12 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=13 ttl=109 time=1.13 ms
+64 bytes from 8.8.8.8: icmp_seq=14 ttl=109 time=1.12 ms
+64 bytes from 8.8.8.8: icmp_seq=15 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=16 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=17 ttl=109 time=1.22 ms
+64 bytes from 8.8.8.8: icmp_seq=18 ttl=109 time=1.19 ms
+64 bytes from 8.8.8.8: icmp_seq=19 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=20 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=21 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=22 ttl=109 time=1.23 ms
+64 bytes from 8.8.8.8: icmp_seq=23 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=24 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=25 ttl=109 time=1.25 ms
+64 bytes from 8.8.8.8: icmp_seq=26 ttl=109 time=1.22 ms
+64 bytes from 8.8.8.8: icmp_seq=27 ttl=109 time=1.15 ms
+^C
+[centos@node-0 ~]$ docker container logs -f 10 6b1df6c7d76b
+"docker container logs" requires exactly 1 argument.
+See 'docker container logs --help'.
+
+Usage:  docker container logs [OPTIONS] CONTAINER
+
+Fetch the logs of a container
+[centos@node-0 ~]$ docker container logs -f --tail 10 6b1df6c7d76b
+64 bytes from 8.8.8.8: icmp_seq=46 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=47 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=48 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=49 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=50 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=51 ttl=109 time=1.15 ms
+64 bytes from 8.8.8.8: icmp_seq=52 ttl=109 time=1.20 ms
+64 bytes from 8.8.8.8: icmp_seq=53 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=54 ttl=109 time=1.14 ms
+64 bytes from 8.8.8.8: icmp_seq=55 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=56 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=57 ttl=109 time=1.17 ms
+64 bytes from 8.8.8.8: icmp_seq=58 ttl=109 time=1.18 ms
+64 bytes from 8.8.8.8: icmp_seq=59 ttl=109 time=1.16 ms
+64 bytes from 8.8.8.8: icmp_seq=60 ttl=109 time=1.28 ms
+64 bytes from 8.8.8.8: icmp_seq=61 ttl=109 time=1.17 ms
+^C
+[centos@node-0 ~]$ docker container kill 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ docker container start 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ docker container inspect 6b1df6c7d76b
+[
+    {
+        "Id": "6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c",
+        "Created": "2020-06-15T15:26:35.04957411Z",
+        "Path": "ping",
+        "Args": [
+            "8.8.8.8"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 8778,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2020-06-15T15:30:44.128592342Z",
+            "FinishedAt": "2020-06-15T15:29:56.868085035Z"
+        },
+        "Image": "sha256:b5b4d78bc90ccd15806443fb881e35b5ddba924e2f475c1071a38a3094c3081d",
+        "ResolvConfPath": "/var/lib/docker/containers/6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c/hostname",
+        "HostsPath": "/var/lib/docker/containers/6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c/hosts",
+        "LogPath": "/var/lib/docker/containers/6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c/6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c-json.log",
+        "Name": "/hardcore_mayer",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "default",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "CapAdd": null,
+            "CapDrop": null,
+            "Capabilities": null,
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "KernelMemory": 0,
+            "KernelMemoryTCP": 0,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": false,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/68005362e5fea9cafd856155fba35aacfa4012f5f5c04a3bc5aa64dcd992c4e4-init/diff:/var/lib/docker/overlay2/887b55553ce953bb9f69000a0aa778d44b6178bb7a92af32036e541f7e7999b5/diff",
+                "MergedDir": "/var/lib/docker/overlay2/68005362e5fea9cafd856155fba35aacfa4012f5f5c04a3bc5aa64dcd992c4e4/merged",
+                "UpperDir": "/var/lib/docker/overlay2/68005362e5fea9cafd856155fba35aacfa4012f5f5c04a3bc5aa64dcd992c4e4/diff",
+                "WorkDir": "/var/lib/docker/overlay2/68005362e5fea9cafd856155fba35aacfa4012f5f5c04a3bc5aa64dcd992c4e4/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "6b1df6c7d76b",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": [
+                "ping",
+                "8.8.8.8"
+            ],
+            "Image": "centos:7",
+            "Volumes": null,
+            "WorkingDir": "",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {
+                "org.label-schema.build-date": "20200504",
+                "org.label-schema.license": "GPLv2",
+                "org.label-schema.name": "CentOS Base Image",
+                "org.label-schema.schema-version": "1.0",
+                "org.label-schema.vendor": "CentOS",
+                "org.opencontainers.image.created": "2020-05-04 00:00:00+01:00",
+                "org.opencontainers.image.licenses": "GPL-2.0-only",
+                "org.opencontainers.image.title": "CentOS Base Image",
+                "org.opencontainers.image.vendor": "CentOS"
+            }
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "9b635e41f28e32a9c4b5676c1b7efd2bb1c464bd98b8e290c0f4719a2e225acd",
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "Ports": {},
+            "SandboxKey": "/var/run/docker/netns/9b635e41f28e",
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "85534182b489232767709799d453000534859c127884c5ecbdb11d4d4da4d2c7",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.2",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "02:42:ac:11:00:02",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "NetworkID": "c9b2cd04b66fc071b63b8008b5029c653bb9d4a5355a1fa01fca0a6fc1bcccc5",
+                    "EndpointID": "85534182b489232767709799d453000534859c127884c5ecbdb11d4d4da4d2c7",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.2",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "MacAddress": "02:42:ac:11:00:02",
+                    "DriverOpts": null
+                }
+            }
+        }
+    }
+]
+[centos@node-0 ~]$ docker container inspect 6b1df6c7d76b | grep IPAddress
+            "SecondaryIPAddresses": null,
+            "IPAddress": "172.17.0.2",
+                    "IPAddress": "172.17.0.2",
+[centos@node-0 ~]$ docker container inspect 6b1df6c7d76b | grep Cmd
+            "Cmd": [
+[centos@node-0 ~]$ docker container inspect --format='{{.Config.Cmd}}' 6b1df6c7d76b
+[ping 8.8.8.8]
+[centos@node-0 ~]$ docker container inspect --format='{{.Config.IPAddress}}' 6b1df6c7d76b
+
+Template parsing error: template: :1:9: executing "" at <.Config.IPAddress>: map has no entry for key "IPAddress"
+[centos@node-0 ~]$ docker container inspect --format='{{.Config.Networks}}' 6b1df6c7d76b
+
+Template parsing error: template: :1:9: executing "" at <.Config.Networks>: map has no entry for key "Networks"
+[centos@node-0 ~]$ docker container inspect --format='{{.Config.NetworkSettings}}' 6b1df6c7d76b
+
+Template parsing error: template: :1:9: executing "" at <.Config.NetworkSettings>: map has no entry for key "NetworkSettings"
+[centos@node-0 ~]$ docker container inspect --format='{{.NetworkSettings.Networks.bridge.IPAddress}}' 6b1df6c7d76b
+172.17.0.2
+[centos@node-0 ~]$ docker container iinspect --format='{{jason .Config}}' 6b1df6c7d76b
+unknown flag: --format
+See 'docker container --help'.
+
+Usage:  docker container COMMAND
+
+Manage containers
+
+Commands:
+  attach      Attach local standard input, output, and error streams to a running container
+  commit      Create a new image from a container's changes
+  cp          Copy files/folders between a container and the local filesystem
+  create      Create a new container
+  diff        Inspect changes to files or directories on a container's filesystem
+  exec        Run a command in a running container
+  export      Export a container's filesystem as a tar archive
+  inspect     Display detailed information on one or more containers
+  kill        Kill one or more running containers
+  logs        Fetch the logs of a container
+  ls          List containers
+  pause       Pause all processes within one or more containers
+  port        List port mappings or a specific mapping for the container
+  prune       Remove all stopped containers
+  rename      Rename a container
+  restart     Restart one or more containers
+  rm          Remove one or more containers
+  run         Run a command in a new container
+  start       Start one or more stopped containers
+  stats       Display a live stream of container(s) resource usage statistics
+  stop        Stop one or more running containers
+  top         Display the running processes of a container
+  unpause     Unpause all processes within one or more containers
+  update      Update configuration of one or more containers
+  wait        Block until one or more containers stop, then print their exit codes
+
+Run 'docker container COMMAND --help' for more information on a command.
+
+[centos@node-0 ~]$ docker container inspect --format='{{jason .Config}}' 6b1df6c7d76b
+Template parsing error: template: :1: function "jason" not defined
+[centos@node-0 ~]$ docker container inspect --format='{{json .Config}}' 6b1df6c7d76b
+{"Hostname":"6b1df6c7d76b","Domainname":"","User":"","AttachStdin":false,"AttachStdout":false,"AttachStderr":false,"Tty":false,"OpenStdin":false,"StdinOnce":false,"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"Cmd":["ping","8.8.8.8"],"Image":"centos:7","Volumes":null,"WorkingDir":"","Entrypoint":null,"OnBuild":null,"Labels":{"org.label-schema.build-date":"20200504","org.label-schema.license":"GPLv2","org.label-schema.name":"CentOS Base Image","org.label-schema.schema-version":"1.0","org.label-schema.vendor":"CentOS","org.opencontainers.image.created":"2020-05-04 00:00:00+01:00","org.opencontainers.image.licenses":"GPL-2.0-only","org.opencontainers.image.title":"CentOS Base Image","org.opencontainers.image.vendor":"CentOS"}}
+[centos@node-0 ~]$ docker container inspect --format='{{json .Config}}' 6b1df6c7d76b | jq
+{
+  "Hostname": "6b1df6c7d76b",
+  "Domainname": "",
+  "User": "",
+  "AttachStdin": false,
+  "AttachStdout": false,
+  "AttachStderr": false,
+  "Tty": false,
+  "OpenStdin": false,
+  "StdinOnce": false,
+  "Env": [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  ],
+  "Cmd": [
+    "ping",
+    "8.8.8.8"
+  ],
+  "Image": "centos:7",
+  "Volumes": null,
+  "WorkingDir": "",
+  "Entrypoint": null,
+  "OnBuild": null,
+  "Labels": {
+    "org.label-schema.build-date": "20200504",
+    "org.label-schema.license": "GPLv2",
+    "org.label-schema.name": "CentOS Base Image",
+    "org.label-schema.schema-version": "1.0",
+    "org.label-schema.vendor": "CentOS",
+    "org.opencontainers.image.created": "2020-05-04 00:00:00+01:00",
+    "org.opencontainers.image.licenses": "GPL-2.0-only",
+    "org.opencontainers.image.title": "CentOS Base Image",
+    "org.opencontainers.image.vendor": "CentOS"
+  }
+}
+[centos@node-0 ~]$ docker container rm 6b1df6c7d76b
+Error response from daemon: You cannot remove a running container 6b1df6c7d76bafa19215dffa80e1666c40a6af7d8d5c159e8fd7b7697792d69c. Stop the container before attempting removal or force remove
+[centos@node-0 ~]$ docker container rm -f 6b1df6c7d76b
+6b1df6c7d76b
+[centos@node-0 ~]$ history | grep run
+   79  docker run hello-world
+   97  docker container run -d centos:7 ping 8.8.8.8
+  124  history | grep run
+[centos@node-0 ~]$ docker container run -d centos:7 ping 8.8.8.8
+e10a853e006642423066af4e985293c7b69a500b8b1ff95c312ad65452360c53
+[centos@node-0 ~]$ docker container run -d centos:7 ping 8.8.8.8
+00659af6a98757b1cb7934cd2f88082ab9df41ad6cdc840f2f65333b2cbe3593
+[centos@node-0 ~]$ docker container run -d centos:7 ping 8.8.8.8
+713ac66f3e2e86c4d1f8ece698ccf28419aa080bd3af9a90d8c4aa6df0b8993e
+[centos@node-0 ~]$ docker container stop e10a853e006642423066af4e985293c7b69a500b8b1ff95c312ad65452360c53
+e10a853e006642423066af4e985293c7b69a500b8b1ff95c312ad65452360c53
+[centos@node-0 ~]$ docker container ls --filter "exited"
+invalid argument "exited" for "-f, --filter" flag: bad format of filter (expected name=value)
+See 'docker container ls --help'.
+[centos@node-0 ~]$ docker container ls --filter="exited"
+invalid argument "exited" for "-f, --filter" flag: bad format of filter (expected name=value)
+See 'docker container ls --help'.
+[centos@node-0 ~]$ docker container ls --filter "exited=0"
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+[centos@node-0 ~]$ docker container ls --filter "exited=1"
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+[centos@node-0 ~]$ docker container ls --filter "exited=*"
+Error response from daemon: strconv.Atoi: parsing "*": invalid syntax
+[centos@node-0 ~]$ docker container ls --filter "exited"
+invalid argument "exited" for "-f, --filter" flag: bad format of filter (expected name=value)
+See 'docker container ls --help'.
+[centos@node-0 ~]$ docker container ls -a --filter "exited=0"
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                      PORTS               NAMES
+b4ad5b22eae2        hello-world         "/hello"            39 minutes ago      Exited (0) 39 minutes ago                       practical_sutherland
+[centos@node-0 ~]$ docker container ls -a
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                       PORTS               NAMES
+713ac66f3e2e        centos:7            "ping 8.8.8.8"      2 minutes ago       Up 2 minutes                                     quizzical_goldstine
+00659af6a987        centos:7            "ping 8.8.8.8"      2 minutes ago       Up 2 minutes                                     sad_bell
+e10a853e0066        centos:7            "ping 8.8.8.8"      2 minutes ago       Exited (137) 2 minutes ago                       happy_elbakyan
+b4ad5b22eae2        hello-world         "/hello"            39 minutes ago      Exited (0) 39 minutes ago                        practical_sutherland
+[centos@node-0 ~]$ docker container ls -a --filter "exited=137"
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                       PORTS               NAMES
+e10a853e0066        centos:7            "ping 8.8.8.8"      2 minutes ago       Exited (137) 2 minutes ago                       happy_elbakyan
+[centos@node-0 ~]$ docker container ls -a --filter "status=exited"
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                       PORTS               NAMES
+e10a853e0066        centos:7            "ping 8.8.8.8"      3 minutes ago       Exited (137) 2 minutes ago                       happy_elbakyan
+b4ad5b22eae2        hello-world         "/hello"            40 minutes ago      Exited (0) 40 minutes ago                        practical_sutherland
+[centos@node-0 ~]$ docker container rm e10a853e0066
+e10a853e0066
+[centos@node-0 ~]$ docker container ls -a --filter "status=exited"
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                      PORTS               NAMES
+b4ad5b22eae2        hello-world         "/hello"            41 minutes ago      Exited (0) 41 minutes ago                       practical_sutherland
+[centos@node-0 ~]$ docker container rm 00659af6a987
+Error response from daemon: You cannot remove a running container 00659af6a98757b1cb7934cd2f88082ab9df41ad6cdc840f2f65333b2cbe3593. Stop the container before attempting removal or force remove
+[centos@node-0 ~]$ docker container rm -f 00659af6a987
+00659af6a987
+[centos@node-0 ~]$ docker container rm -f $(docker container ls -qa)
+713ac66f3e2e
+b4ad5b22eae2

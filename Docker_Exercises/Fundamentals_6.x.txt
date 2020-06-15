@@ -1,0 +1,30 @@
+nano Dockerfile
+  # inserted this
+  FROM centos:7
+  RUN yum update -y
+  RUN yum install -y which wget
+docker image build -t myimage .
+docker container run -it myimage bash
+nano Dockerfile
+  # changed to
+  FROM centos:7
+  RUN yum update -y
+  RUN yum install -y which wget
+  RUN yum install -y vim
+docker container run -it myimage bash
+docker image build -t myimage .
+nano Dockerfile
+  # changed to
+  FROM centos:7
+  RUN yum update -y
+  RUN yum install -y vim
+  RUN yum install -y wget which
+docker image build -t myimage .
+docker image history myimage:latest
+nano Dockerfile
+  # changed to
+  FROM centos:7
+  RUN yum update -y
+  RUN yum install -y vim wget which
+docker image build -t myimage .
+docker image history myimage:latest

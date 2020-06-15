@@ -1,0 +1,6 @@
+docker container run -it centos:7 bash
+docker container ls -a
+docker container diff a585bbadb8c0
+docker container commit a585bbadb8c0 myapp:1.0
+docker image ls
+docker container run -it myapp:1.0 bash

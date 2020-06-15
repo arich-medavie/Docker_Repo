@@ -1,0 +1,45 @@
+$ sudo docker container run -it centos:7 bash
+[root@12be2644aa8a /]# ls -l
+total 56
+-rw-r--r--   1 root root 12148 May  4 15:37 anaconda-post.log
+lrwxrwxrwx   1 root root     7 May  4 15:35 bin -> usr/bin
+drwxr-xr-x   5 root root   360 Jun 15 13:32 dev
+drwxr-xr-x   1 root root  4096 Jun 15 13:32 etc
+drwxr-xr-x   2 root root  4096 Apr 11  2018 home
+lrwxrwxrwx   1 root root     7 May  4 15:35 lib -> usr/lib
+lrwxrwxrwx   1 root root     9 May  4 15:35 lib64 -> usr/lib64
+drwxr-xr-x   2 root root  4096 Apr 11  2018 media
+drwxr-xr-x   2 root root  4096 Apr 11  2018 mnt
+drwxr-xr-x   2 root root  4096 Apr 11  2018 opt
+dr-xr-xr-x 363 root root     0 Jun 15 13:32 proc
+dr-xr-x---   2 root root  4096 May  4 15:37 root
+drwxr-xr-x  11 root root  4096 May  4 15:37 run
+lrwxrwxrwx   1 root root     8 May  4 15:35 sbin -> usr/sbin
+drwxr-xr-x   2 root root  4096 Apr 11  2018 srv
+dr-xr-xr-x  13 root root     0 Jun 15 13:32 sys
+drwxrwxrwt   7 root root  4096 May  4 15:37 tmp
+drwxr-xr-x  13 root root  4096 May  4 15:35 usr
+drwxr-xr-x  18 root root  4096 May  4 15:36 var
+[root@12be2644aa8a /]# echo "Hello There..." > test.txt
+[root@12be2644aa8a /]# ls -l
+total 60
+-rw-r--r--   1 root root 12148 May  4 15:37 anaconda-post.log
+lrwxrwxrwx   1 root root     7 May  4 15:35 bin -> usr/bin
+drwxr-xr-x   5 root root   360 Jun 15 13:32 dev
+drwxr-xr-x   1 root root  4096 Jun 15 13:32 etc
+drwxr-xr-x   2 root root  4096 Apr 11  2018 home
+lrwxrwxrwx   1 root root     7 May  4 15:35 lib -> usr/lib
+lrwxrwxrwx   1 root root     9 May  4 15:35 lib64 -> usr/lib64
+drwxr-xr-x   2 root root  4096 Apr 11  2018 media
+drwxr-xr-x   2 root root  4096 Apr 11  2018 mnt
+drwxr-xr-x   2 root root  4096 Apr 11  2018 opt
+dr-xr-xr-x 365 root root     0 Jun 15 13:32 proc
+dr-xr-x---   2 root root  4096 May  4 15:37 root
+drwxr-xr-x  11 root root  4096 May  4 15:37 run
+lrwxrwxrwx   1 root root     8 May  4 15:35 sbin -> usr/sbin
+drwxr-xr-x   2 root root  4096 Apr 11  2018 srv
+dr-xr-xr-x  13 root root     0 Jun 15 13:32 sys
+-rw-r--r--   1 root root    15 Jun 15 13:32 test.txt
+drwxrwxrwt   7 root root  4096 May  4 15:37 tmp
+drwxr-xr-x  13 root root  4096 May  4 15:35 usr
+drwxr-xr-x  18 root root  4096 May  4 15:36 var

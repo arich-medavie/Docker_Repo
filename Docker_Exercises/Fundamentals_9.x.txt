@@ -1,0 +1,161 @@
+[centos@node-0 Docker_Excercises]$ mkdir Exercise_9
+[centos@node-0 Docker_Excercises]$ cd Exercise_9
+[centos@node-0 Exercise_9]$ docker image pull centos:7
+7: Pulling from library/centos
+Digest: sha256:e9ce0b76f29f942502facd849f3e468232492b259b9d9f076f71b392293f1582
+Status: Image is up to date for centos:7
+docker.io/library/centos:7
+[centos@node-0 Exercise_9]$ docker image tag centos:7 my-centos:dev
+[centos@node-0 Exercise_9]$ docker image ls
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+<none>              <none>              dc9e5d96fb6e        30 minutes ago      4.01MB
+my-app-small        latest              bf18e2099135        35 minutes ago      4.01MB
+my-build-stage      latest              d2681081f4c1        37 minutes ago      184MB
+my-app-large        latest              d2681081f4c1        37 minutes ago      184MB
+myimage             latest              9c1e6461495f        About an hour ago   459MB
+<none>              <none>              24cb5bfa1ad5        About an hour ago   459MB
+<none>              <none>              898c648a14a7        About an hour ago   459MB
+<none>              <none>              1b2d0a6c6a71        About an hour ago   459MB
+<none>              <none>              2a6b2561bdd6        About an hour ago   459MB
+<none>              <none>              8ea32e271bfe        2 hours ago         534MB
+<none>              <none>              6675757e933c        2 hours ago         534MB
+myapp               1.0                 1648d5dc630f        2 hours ago         280MB
+centos              7                   b5b4d78bc90c        5 weeks ago         203MB
+my-centos           dev                 b5b4d78bc90c        5 weeks ago         203MB
+hello-world         latest              bf756fb1ae65        5 months ago        13.3kB
+my-app-small-bk     latest              291877984cfc        16 months ago       4MB
+alpine              3.5                 f80194ae2e0c        16 months ago       4MB
+[centos@node-0 Exercise_9]$ docker image push my-centos:dev
+The push refers to repository [docker.io/library/my-centos]
+edf3aa290fb3: Preparing
+denied: requested access to the resource is denied
+[centos@node-0 Exercise_9]$ docker login
+Login with your Docker ID to push and pull images from Docker Hub. If you don't have a Docker ID, head over to https://hub.docker.com to create one.
+Username: arichmedavie
+Password:
+WARNING! Your password will be stored unencrypted in /home/centos/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+[centos@node-0 Exercise_9]$ docker image tag my-centos:dev arichmedavie/my-centos:dev
+[centos@node-0 Exercise_9]$ docker image push arichmedavie/my-centos:dev
+The push refers to repository [docker.io/arichmedavie/my-centos]
+edf3aa290fb3: Mounted from library/centos
+dev: digest: sha256:c2f1d5a9c0a81350fa0ad7e1eee99e379d75fe53823d44b5469eb2eb6092c941 size: 529
+[centos@node-0 Exercise_9]$ nano Dockerfile
+[centos@node-0 Exercise_9]$ docker image build -t arichmedavie/my-centos:1.0
+"docker image build" requires exactly 1 argument.
+See 'docker image build --help'.
+
+Usage:  docker image build [OPTIONS] PATH | URL | -
+
+Build an image from a Dockerfile
+[centos@node-0 Exercise_9]$ cat Dockerfile
+FROM arichmedavie/my-centos:dev
+RUN yum install -y wget which curl
+ENTRYPOINT ["curl"]
+CMD ["google.ca"]
+[centos@node-0 Exercise_9]$ docker image build -t arichmedavie/my-centos:1.0 .
+Sending build context to Docker daemon  2.048kB
+Step 1/4 : FROM arichmedavie/my-centos:dev
+ ---> b5b4d78bc90c
+Step 2/4 : RUN yum install -y wget which curl
+ ---> Running in bca516f4c556
+Loaded plugins: fastestmirror, ovl
+Determining fastest mirrors
+ * base: d36uatko69830t.cloudfront.net
+ * extras: d36uatko69830t.cloudfront.net
+ * updates: d36uatko69830t.cloudfront.net
+Package curl-7.29.0-57.el7.x86_64 already installed and latest version
+Resolving Dependencies
+--> Running transaction check
+---> Package wget.x86_64 0:1.14-18.el7_6.1 will be installed
+---> Package which.x86_64 0:2.20-7.el7 will be installed
+--> Finished Dependency Resolution
+
+Dependencies Resolved
+
+================================================================================
+ Package        Arch            Version                     Repository     Size
+================================================================================
+Installing:
+ wget           x86_64          1.14-18.el7_6.1             base          547 k
+ which          x86_64          2.20-7.el7                  base           41 k
+
+Transaction Summary
+================================================================================
+Install  2 Packages
+
+Total download size: 588 k
+Installed size: 2.0 M
+Downloading packages:
+warning: /var/cache/yum/x86_64/7/base/packages/which-2.20-7.el7.x86_64.rpm: Header V3 RSA/SHA256 Signature, key ID f4a80eb5: NOKEY
+Public key for which-2.20-7.el7.x86_64.rpm is not installed
+--------------------------------------------------------------------------------
+Total                                              3.4 MB/s | 588 kB  00:00
+Retrieving key from file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+Importing GPG key 0xF4A80EB5:
+ Userid     : "CentOS-7 Key (CentOS 7 Official Signing Key) <security@centos.org>"
+ Fingerprint: 6341 ab27 53d7 8a78 a7c2 7bb1 24c6 a8a7 f4a8 0eb5
+ Package    : centos-release-7-8.2003.0.el7.centos.x86_64 (@CentOS)
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+Running transaction check
+Running transaction test
+Transaction test succeeded
+Running transaction
+  Installing : wget-1.14-18.el7_6.1.x86_64                                  1/2
+install-info: No such file or directory for /usr/share/info/wget.info.gz
+  Installing : which-2.20-7.el7.x86_64                                      2/2
+install-info: No such file or directory for /usr/share/info/which.info.gz
+  Verifying  : which-2.20-7.el7.x86_64                                      1/2
+  Verifying  : wget-1.14-18.el7_6.1.x86_64                                  2/2
+
+Installed:
+  wget.x86_64 0:1.14-18.el7_6.1            which.x86_64 0:2.20-7.el7
+
+Complete!
+Removing intermediate container bca516f4c556
+ ---> 1add7906d0c9
+Step 3/4 : ENTRYPOINT ["curl"]
+ ---> Running in f922724b7b54
+Removing intermediate container f922724b7b54
+ ---> f4d9bdd19eac
+Step 4/4 : CMD ["google.ca"]
+ ---> Running in cc5853b70d31
+Removing intermediate container cc5853b70d31
+ ---> f6041103c8b5
+Successfully built f6041103c8b5
+Successfully tagged arichmedavie/my-centos:1.0
+[centos@node-0 Exercise_9]$ history | grep push
+  242  docker image push my-centos:dev
+  245  docker image push arichmedavie/my-centos:dev
+  250  history | grep push
+[centos@node-0 Exercise_9]$ docker image push arichmedavie/my-centos:1.0
+The push refers to repository [docker.io/arichmedavie/my-centos]
+a7d44ead7df3: Pushed
+edf3aa290fb3: Layer already exists
+1.0: digest: sha256:8ec3f4fc1a3b18f7108672fd07ba57d3a522236d0eb31d02532cdca842cb779b size: 741
+[centos@node-0 Exercise_9]$ docker image ls
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+arichmedavie/my-centos   1.0                 f6041103c8b5        45 seconds ago      280MB
+<none>                   <none>              dc9e5d96fb6e        36 minutes ago      4.01MB
+my-app-small             latest              bf18e2099135        42 minutes ago      4.01MB
+my-app-large             latest              d2681081f4c1        43 minutes ago      184MB
+my-build-stage           latest              d2681081f4c1        43 minutes ago      184MB
+myimage                  latest              9c1e6461495f        About an hour ago   459MB
+<none>                   <none>              24cb5bfa1ad5        About an hour ago   459MB
+<none>                   <none>              898c648a14a7        About an hour ago   459MB
+<none>                   <none>              1b2d0a6c6a71        About an hour ago   459MB
+<none>                   <none>              2a6b2561bdd6        About an hour ago   459MB
+<none>                   <none>              8ea32e271bfe        2 hours ago         534MB
+<none>                   <none>              6675757e933c        2 hours ago         534MB
+myapp                    1.0                 1648d5dc630f        2 hours ago         280MB
+my-centos                dev                 b5b4d78bc90c        5 weeks ago         203MB
+arichmedavie/my-centos   dev                 b5b4d78bc90c        5 weeks ago         203MB
+centos                   7                   b5b4d78bc90c        5 weeks ago         203MB
+hello-world              latest              bf756fb1ae65        5 months ago        13.3kB
+my-app-small-bk          latest              291877984cfc        16 months ago       4MB
+alpine                   3.5                 f80194ae2e0c        16 months ago       4MB
+[centos@node-0 Exercise_9]$ docker image rm my-centos:dev
+Untagged: my-centos:dev

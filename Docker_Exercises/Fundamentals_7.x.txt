@@ -1,0 +1,27 @@
+nano Dockerfile
+# add
+  CMD ["ping", "-c", "127.0.0.1", "5"]
+docker image build -t myimage .
+docker container run myimage
+docker container exec -it myimage
+docker container run -it myimage
+docker container run -it myimage bash
+nano Dockerfile
+# Change CMD to ENTRYPOINT
+  ENTRYPOINT ["ping"]
+
+docker image build -t myimage .
+docker container run myimage
+# Intentionally failed ^
+nano Dockerfile
+# Add to ENTRYPOINT line
+  ENTRYPOINT ["-c", "3"]
+docker image build -t myimage .
+docker container run myimage
+docker container run myimage 127.0.0.1
+nano Dockerfile
+# Add 127.0.0.1 to CMD line
+  CMD ["127.0.0.1"]
+docker image build -t myimage .
+docker container run myimage 8.8.8.8
+# The above proves that 8.8.8.8 overwrote the pre-defined CMD line

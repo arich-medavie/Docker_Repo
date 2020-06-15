@@ -1,0 +1,288 @@
+[centos@node-0 Docker_Excercises]$ mkdir Exercise_8
+[centos@node-0 Docker_Excercises]$ cd Exercise_
+-bash: cd: Exercise_: No such file or directory
+[centos@node-0 Docker_Excercises]$ cd Exercise_8
+[centos@node-0 Exercise_8]$ nano hello.c
+[centos@node-0 Exercise_8]$ gcc -Wall hello.c -o hello
+hello.c: In function ‘main’:
+hello.c:6:10: error: expected expression before ‘)’ token
+  return ();
+          ^
+hello.c:7:1: warning: control reaches end of non-void function [-Wreturn-type]
+ }
+ ^
+[centos@node-0 Exercise_8]$ nano hello.c
+[centos@node-0 Exercise_8]$ gcc -Wall hello.c -o hello
+[centos@node-0 Exercise_8]$ ./hello
+Hello, world!
+[centos@node-0 Exercise_8]$ nano Dockerfile
+[centos@node-0 Exercise_8]$ docker image build -t my-app-large .
+Sending build context to Docker daemon  12.29kB
+Step 1/8 : FROM alpine:3.5
+3.5: Pulling from library/alpine
+8cae0e1ac61c: Pull complete
+Digest: sha256:66952b313e51c3bd1987d7c4ddf5dba9bc0fb6e524eed2448fa660246b3e76ec
+Status: Downloaded newer image for alpine:3.5
+ ---> f80194ae2e0c
+Step 2/8 : RUN apk update &&    apk add --update alpine-sdk
+ ---> Running in a3fbaeb6aac6
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.5/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.5/community/x86_64/APKINDEX.tar.gz
+v3.5.3-40-g389d0b359a [http://dl-cdn.alpinelinux.org/alpine/v3.5/main]
+v3.5.3-40-g389d0b359a [http://dl-cdn.alpinelinux.org/alpine/v3.5/community]
+OK: 7963 distinct packages available
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.5/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.5/community/x86_64/APKINDEX.tar.gz
+(1/57) Installing fakeroot (1.21-r1)
+(2/57) Installing sudo (1.8.19_p1-r0)
+(3/57) Installing libcap (2.25-r1)
+(4/57) Installing pax-utils (1.1.6-r0)
+(5/57) Installing libressl (2.4.4-r0)
+(6/57) Installing libattr (2.4.47-r4)
+(7/57) Installing attr (2.4.47-r4)
+(8/57) Installing tar (1.29-r1)
+(9/57) Installing pkgconf (1.0.2-r0)
+(10/57) Installing patch (2.7.5-r3)
+(11/57) Installing ca-certificates (20161130-r1)
+(12/57) Installing libssh2 (1.7.0-r2)
+(13/57) Installing libcurl (7.61.1-r1)
+(14/57) Installing curl (7.61.1-r1)
+(15/57) Installing abuild (2.29.0-r2)
+Executing abuild-2.29.0-r2.pre-install
+(16/57) Installing binutils-libs (2.27-r1)
+(17/57) Installing binutils (2.27-r1)
+(18/57) Installing gmp (6.1.1-r0)
+(19/57) Installing isl (0.17.1-r0)
+(20/57) Installing libgomp (6.2.1-r1)
+(21/57) Installing libatomic (6.2.1-r1)
+(22/57) Installing libgcc (6.2.1-r1)
+(23/57) Installing mpfr3 (3.1.5-r0)
+(24/57) Installing mpc1 (1.0.3-r0)
+(25/57) Installing libstdc++ (6.2.1-r1)
+(26/57) Installing gcc (6.2.1-r1)
+(27/57) Installing make (4.2.1-r0)
+(28/57) Installing musl-dev (1.1.15-r8)
+(29/57) Installing libc-dev (0.7-r1)
+(30/57) Installing fortify-headers (0.8-r0)
+(31/57) Installing g++ (6.2.1-r1)
+(32/57) Installing build-base (0.4-r1)
+(33/57) Installing expat (2.2.0-r1)
+(34/57) Installing pcre (8.39-r0)
+(35/57) Installing git (2.11.3-r2)
+(36/57) Installing xz-libs (5.2.2-r1)
+(37/57) Installing lzo (2.09-r1)
+(38/57) Installing squashfs-tools (4.3-r3)
+(39/57) Installing libburn (1.4.6-r0)
+(40/57) Installing ncurses-terminfo-base (6.0_p20171125-r1)
+(41/57) Installing ncurses-terminfo (6.0_p20171125-r1)
+(42/57) Installing ncurses-libs (6.0_p20171125-r1)
+(43/57) Installing libedit (20150325.3.1-r3)
+(44/57) Installing libacl (2.2.52-r2)
+(45/57) Installing libisofs (1.4.6-r0)
+(46/57) Installing libisoburn (1.4.6-r0)
+(47/57) Installing xorriso (1.4.6-r0)
+(48/57) Installing acct (6.6.2-r0)
+(49/57) Installing lddtree (1.25-r2)
+(50/57) Installing libuuid (2.28.2-r1)
+(51/57) Installing libblkid (2.28.2-r1)
+(52/57) Installing device-mapper-libs (2.02.168-r3)
+(53/57) Installing cryptsetup-libs (1.7.2-r1)
+(54/57) Installing kmod (23-r1)
+(55/57) Installing mkinitfs (3.0.9-r1)
+Executing mkinitfs-3.0.9-r1.post-install
+(56/57) Installing mtools (4.0.18-r1)
+(57/57) Installing alpine-sdk (0.5-r0)
+Executing busybox-1.25.1-r2.trigger
+Executing ca-certificates-20161130-r1.trigger
+OK: 192 MiB in 68 packages
+Removing intermediate container a3fbaeb6aac6
+ ---> e5ae9ec5ee14
+Step 3/8 : RUN mkdir /app
+ ---> Running in 90668f465076
+Removing intermediate container 90668f465076
+ ---> 6b505236f2a6
+Step 4/8 : WORKDIR /app
+ ---> Running in ca4e003069da
+Removing intermediate container ca4e003069da
+ ---> 00e50db32402
+Step 5/8 : COPY hello.c /app
+ ---> f2d3345ee1ad
+Step 6/8 : RUN mkdir bin
+ ---> Running in 8d8e4899aaef
+Removing intermediate container 8d8e4899aaef
+ ---> 703b0a646bdb
+Step 7/8 : RUN gcc -Wall hello.c -o bin/hello
+ ---> Running in 2b957f140734
+Removing intermediate container 2b957f140734
+ ---> d728153d3b71
+Step 8/8 : CMD /app/bin/hello
+ ---> Running in 928c05f843d8
+Removing intermediate container 928c05f843d8
+ ---> d2681081f4c1
+Successfully built d2681081f4c1
+Successfully tagged my-app-large:latest
+[centos@node-0 Exercise_8]$ docker image ls | grep my-app
+my-app-large        latest              d2681081f4c1        17 seconds ago      184MB
+[centos@node-0 Exercise_8]$ docker container run my-app-large
+Hello, world!
+[centos@node-0 Exercise_8]$ nan Dockerfile
+-bash: nan: command not found
+[centos@node-0 Exercise_8]$ nano Dockerfile
+[centos@node-0 Exercise_8]$ docker image build -t my-app-small .
+Sending build context to Docker daemon  12.29kB
+Step 1/11 : FROM alpine:3.5 AS build
+ ---> f80194ae2e0c
+Step 2/11 : RUN apk update &&   apk add --update alpine-sdk
+ ---> Using cache
+ ---> e5ae9ec5ee14
+Step 3/11 : RUN mkdir /app
+ ---> Using cache
+ ---> 6b505236f2a6
+Step 4/11 : WORKDIR /app
+ ---> Using cache
+ ---> 00e50db32402
+Step 5/11 : COPY hello.c /app
+ ---> Using cache
+ ---> f2d3345ee1ad
+Step 6/11 : RUN mkdir bin
+ ---> Using cache
+ ---> 703b0a646bdb
+Step 7/11 : RUN gcc -Wall hello.c -o bin/hello
+ ---> Using cache
+ ---> d728153d3b71
+Step 8/11 : CMD /app/bin/hello
+ ---> Using cache
+ ---> d2681081f4c1
+Step 9/11 : FROM alpine:3.5
+ ---> f80194ae2e0c
+Step 10/11 : COPY --from=build /app/bin/hello /app/hello
+ ---> c2b3bf73e794
+Step 11/11 : CMD /app/hello
+ ---> Running in 62fd16cf0f2a
+Removing intermediate container 62fd16cf0f2a
+ ---> bf18e2099135
+Successfully built bf18e2099135
+Successfully tagged my-app-small:latest
+[centos@node-0 Exercise_8]$ docker image ls | grep small
+my-app-small        latest              bf18e2099135        6 seconds ago        4.01MB
+[centos@node-0 Exercise_8]$ docker container run --rm my-app-small
+Hello, world!
+
+[centos@node-0 Exercise_8]$ docker image build -t my-build-stage --target build .
+Sending build context to Docker daemon  12.29kB
+Step 1/8 : FROM alpine:3.5 AS build
+ ---> f80194ae2e0c
+Step 2/8 : RUN apk update &&    apk add --update alpine-sdk
+ ---> Using cache
+ ---> e5ae9ec5ee14
+Step 3/8 : RUN mkdir /app
+ ---> Using cache
+ ---> 6b505236f2a6
+Step 4/8 : WORKDIR /app
+ ---> Using cache
+ ---> 00e50db32402
+Step 5/8 : COPY hello.c /app
+ ---> Using cache
+ ---> f2d3345ee1ad
+Step 6/8 : RUN mkdir bin
+ ---> Using cache
+ ---> 703b0a646bdb
+Step 7/8 : RUN gcc -Wall hello.c -o bin/hello
+ ---> Using cache
+ ---> d728153d3b71
+Step 8/8 : CMD /app/bin/hello
+ ---> Using cache
+ ---> d2681081f4c1
+Successfully built d2681081f4c1
+Successfully tagged my-build-stage:latest
+[centos@node-0 Exercise_8]$ docker container run -it --rm my-build-stage /app/bin/hello
+Hello, world!
+[centos@node-0 Exercise_8]$ docker container ls
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+[centos@node-0 Exercise_8]$ docker container ls -a
+CONTAINER ID        IMAGE               COMMAND                    CREATED             STATUS                         PORTS               NAMES
+88466eb325de        my-app-large        "/bin/sh -c /app/bin…"     4 minutes ago       Exited (0) 4 minutes ago                           sad_jones
+ca91bc1fb436        myimage             "ping -c 3 8.8.8.8"        40 minutes ago      Exited (0) 40 minutes ago                          wizardly_wozniak
+fdd9c0673e9b        myimage             "ping -c 3 127.0.0.1"      40 minutes ago      Exited (0) 40 minutes ago                          zen_ganguly
+0a7ea48ccc9a        24cb5bfa1ad5        "ping 127.0.0.1"           41 minutes ago      Exited (0) 41 minutes ago                          elegant_poincare
+3b1d41e4b3b2        24cb5bfa1ad5        "ping"                     42 minutes ago      Exited (2) 42 minutes ago                          zealous_zhukovsky
+8f069bbb5998        898c648a14a7        "echo 'hello world'"       42 minutes ago      Exited (0) 42 minutes ago                          cool_jepsen
+028048c77ffe        898c648a14a7        "ping 127.0.0.1 -c 5"      43 minutes ago      Exited (0) 43 minutes ago                          modest_rubin
+29e183ca4383        1b2d0a6c6a71        "/bin/sh -c '[\"/usr/…"    44 minutes ago      Exited (127) 44 minutes ago                        magical_banzai
+e0426a6e4689        2a6b2561bdd6        "bash"                     44 minutes ago      Exited (0) 44 minutes ago                          funny_swanson
+b37512bd177a        2a6b2561bdd6        "/bin/sh -c '[\"ping\"…"   44 minutes ago      Exited (127) 44 minutes ago                        agitated_satoshi
+e996deaaeb4b        2a6b2561bdd6        "/bin/sh -c '[\"ping\"…"   45 minutes ago      Exited (127) 45 minutes ago                        sharp_greider
+b97d9a948541        2c9e3d1c4bf1        "bash"                     About an hour ago   Exited (0) About an hour ago                       pedantic_chaplygin
+36c8e5ee6633        2c9e3d1c4bf1        "bash"                     About an hour ago   Exited (0) About an hour ago                       serene_hamilton
+e3f48fa121b5        myapp:1.0           "bash"                     2 hours ago         Exited (1) About an hour ago                       thirsty_volhard
+a585bbadb8c0        centos:7            "bash"                     2 hours ago         Exited (0) 2 hours ago                             adoring_perlman
+[centos@node-0 Exercise_8]$ docker image ls -a
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+my-app-small        latest              bf18e2099135        3 minutes ago       4.01MB
+<none>              <none>              c2b3bf73e794        3 minutes ago       4.01MB
+<none>              <none>              703b0a646bdb        5 minutes ago       184MB
+my-app-large        latest              d2681081f4c1        5 minutes ago       184MB
+my-build-stage      latest              d2681081f4c1        5 minutes ago       184MB
+<none>              <none>              d728153d3b71        5 minutes ago       184MB
+<none>              <none>              6b505236f2a6        5 minutes ago       184MB
+<none>              <none>              00e50db32402        5 minutes ago       184MB
+<none>              <none>              f2d3345ee1ad        5 minutes ago       184MB
+<none>              <none>              e5ae9ec5ee14        5 minutes ago       184MB
+<none>              <none>              63bdc5c2652e        41 minutes ago      459MB
+myimage             latest              9c1e6461495f        41 minutes ago      459MB
+<none>              <none>              24cb5bfa1ad5        42 minutes ago      459MB
+<none>              <none>              898c648a14a7        43 minutes ago      459MB
+<none>              <none>              1b2d0a6c6a71        44 minutes ago      459MB
+<none>              <none>              2a6b2561bdd6        46 minutes ago      459MB
+<none>              <none>              a5b967a6bba6        About an hour ago   459MB
+<none>              <none>              8ea32e271bfe        About an hour ago   534MB
+<none>              <none>              f0a08adf8ed2        About an hour ago   458MB
+<none>              <none>              6675757e933c        About an hour ago   534MB
+<none>              <none>              2c9e3d1c4bf1        About an hour ago   403MB
+<none>              <none>              be1178c8d592        About an hour ago   327MB
+myapp               1.0                 1648d5dc630f        2 hours ago         280MB
+centos              7                   b5b4d78bc90c        5 weeks ago         203MB
+hello-world         latest              bf756fb1ae65        5 months ago        13.3kB
+alpine              3.5                 f80194ae2e0c        16 months ago       4MB
+
+###### Demoing BuildKit
+[centos@node-0 Exercise_8]$ export DOCKER_BUILDKIT=1
+[centos@node-0 Exercise_8]$ nano Dockerfile
+[centos@node-0 Exercise_8]$ docker image build --no-cache -t my-app-small-bk .
+[+] Building 5.0s (13/13) FINISHED
+ => [internal] load build definition from Dockerfile                                                                                                                                             0.0s
+ => => transferring dockerfile: 377B                                                                                                                                                             0.0s
+ => [internal] load .dockerignore                                                                                                                                                                0.0s
+ => => transferring context: 2B                                                                                                                                                                  0.0s
+ => [internal] load metadata for docker.io/library/alpine:3.5                                                                                                                                    0.0s
+ => [internal] load build context                                                                                                                                                                0.0s
+ => => transferring context: 173B                                                                                                                                                                0.0s
+ => [build 1/7] FROM docker.io/library/alpine:3.5                                                                                                                                                0.0s
+ => => resolve docker.io/library/alpine:3.5                                                                                                                                                      0.0s
+ => [build 2/7] RUN apk update &&  apk add --update alpine-sdk                                                                                                                                   3.7s
+ => [build 3/7] RUN mkdir /app                                                                                                                                                                   0.4s
+ => [build 4/7] WORKDIR /app                                                                                                                                                                     0.0s
+ => [build 5/7] COPY hello.c /app                                                                                                                                                                0.0s
+ => [build 6/7] RUN mkdir bin                                                                                                                                                                    0.3s
+ => [build 7/7] RUN gcc -Wall hello.c -o bin/hello                                                                                                                                               0.4s
+ => [prod 2/2] COPY --from=build /app/bin/hello /app/hello                                                                                                                                       0.0s
+ => exporting to image                                                                                                                                                                           0.0s
+ => => exporting layers                                                                                                                                                                          0.0s
+ => => writing image sha256:dc9e5d96fb6e60a791c967194680920c6b59ec731e4c041145803908b8cb9383                                                                                                     0.0s
+ => => naming to docker.io/library/my-app-small-bk                                                                                                                                               0.0s
+[centos@node-0 Exercise_8]$ export DOCKER_BUILDKIT=0
+[centos@node-0 Exercise_8]$ export DOCKER_BUILDKIT=1
+[centos@node-0 Exercise_8]$ nano Dockerfile
+[centos@node-0 Exercise_8]$ docker image build --no-cache -t my-app-small-bk .
+[+] Building 0.0s (5/5) FINISHED
+ => [internal] load .dockerignore                                                                                                                                                                0.0s
+ => => transferring context: 2B                                                                                                                                                                  0.0s
+ => [internal] load build definition from Dockerfile                                                                                                                                             0.0s
+ => => transferring dockerfile: 378B                                                                                                                                                             0.0s
+ => [internal] load metadata for docker.io/library/alpine:3.5                                                                                                                                    0.0s
+ => CACHED [prod 1/1] FROM docker.io/library/alpine:3.5                                                                                                                                          0.0s
+ => exporting to image                                                                                                                                                                           0.0s
+ => => exporting layers                                                                                                                                                                          0.0s
+ => => writing image sha256:291877984cfc94d3f0e3a178fb064551dde09ff7a878bf1241255c7f7933c311                                                                                                     0.0s
+ => => naming to docker.io/library/my-app-small-bk                                                                                                                                               0.0s
+[centos@node-0 Exercise_8]$ export DOCKER_BUILDKIT=0

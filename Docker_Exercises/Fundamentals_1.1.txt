@@ -1,0 +1,6 @@
+Unable to find image 'centos:7' locally
+7: Pulling from library/centos
+524b0c1e57f8: Pull complete
+Digest: sha256:e9ce0b76f29f942502facd849f3e468232492b259b9d9f076f71b392293f1582
+Status: Downloaded newer image for centos:7
+hello world

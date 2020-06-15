@@ -1,0 +1,26 @@
+$ sudo docker container ls -a --no-trunc
+CONTAINER ID                                                       IMAGE                  COMMAND                          CREATED             STATUS                      PORTS                                                                                                  NAMES
+12be2644aa8ab1f839fb1294311f0270a51bdeab1f73127e5643fde186ca52be   centos:7               "bash"                           8 minutes ago       Up 5 minutes                                                                                                                       naughty_perlman
+88b390b7648d55b26e8fbdc274de4540f80db668a2c1bc83f7fa41103ebc577a   centos:7               "echo 'hello world'"             32 minutes ago      Exited (0) 32 minutes ago                                                                                                          vigorous_hertz
+745a7373f6cdebff53b6ee9bf98eba7bc2ea21c568bfaa149f7ee2d1a2af41c9   ubuntu                 "bash"                           5 weeks ago         Exited (0) 5 weeks ago                                                                                                             bold_yalow
+b744a304ac8d2517305a563f0e7c5566a7c362ffb2f682989c3350179a5e0820   hello-world            "/hello"                         5 weeks ago         Exited (0) 5 weeks ago                                                                                                             quizzical_chatelet
+e29640540a2b42e3094f549dd92ba35bf278ef824e6f8824ee4ae6473528c5f5   atmoz/sftp             "/entrypoint aaron:bacon:1001"   5 weeks ago         Exited (0) 5 weeks ago                                                                                                             musing_feynman
+f3819a6ea48358be93736e68b59b2e444e4c88fb82da5bc6d458db5122f484ce   pihole/pihole:latest   "/s6-init"                       3 months ago        Up 4 weeks (healthy)        0.0.0.0:53->53/udp, 0.0.0.0:53->53/tcp, 0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp, 0.0.0.0:67->67/udp   pihole
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container ls -a -q
+12be2644aa8a
+88b390b7648d
+745a7373f6cd
+b744a304ac8d
+e29640540a2b
+f3819a6ea483
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container ls -l
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+12be2644aa8a        centos:7            "bash"              8 minutes ago       Up 6 minutes                            naughty_perlman
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container ls -a --filter "exited=0"
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                      PORTS               NAMES
+88b390b7648d        centos:7            "echo 'hello world'"     33 minutes ago      Exited (0) 33 minutes ago                       vigorous_hertz
+745a7373f6cd        ubuntu              "bash"                   5 weeks ago         Exited (0) 5 weeks ago                          bold_yalow
+b744a304ac8d        hello-world         "/hello"                 5 weeks ago         Exited (0) 5 weeks ago                          quizzical_chatelet
+e29640540a2b        atmoz/sftp          "/entrypoint aaron:b…"   5 weeks ago         Exited (0) 5 weeks ago                          musing_feynman
+
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container rm -f $(docker container ls -aq)

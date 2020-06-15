@@ -1,0 +1,46 @@
+$ sudo docker container ls -a
+CONTAINER ID        IMAGE                  COMMAND                  CREATED             STATUS                          PORTS                                                                                                  NAMES
+12be2644aa8a        centos:7               "bash"                   2 minutes ago       Exited (0) About a minute ago                                                                                                          naughty_perlman
+88b390b7648d        centos:7               "echo 'hello world'"     26 minutes ago      Exited (0) 26 minutes ago                                                                                                              vigorous_hertz
+745a7373f6cd        ubuntu                 "bash"                   5 weeks ago         Exited (0) 5 weeks ago                                                                                                                 bold_yalow
+b744a304ac8d        hello-world            "/hello"                 5 weeks ago         Exited (0) 5 weeks ago                                                                                                                 quizzical_chatelet
+e29640540a2b        atmoz/sftp             "/entrypoint aaron:b…"   5 weeks ago         Exited (0) 5 weeks ago                                                                                                                 musing_feynman
+f3819a6ea483        pihole/pihole:latest   "/s6-init"               3 months ago        Up 4 weeks (healthy)            0.0.0.0:53->53/udp, 0.0.0.0:53->53/tcp, 0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp, 0.0.0.0:67->67/udp   pihole
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container start 12be2644aa8a
+12be2644aa8a
+boss@main:~/environments/Docker_Training/Docker_Repo$ docker container ls
+Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get http://%2Fvar%2Frun%2Fdocker.sock/v1.40/containers/json: dial unix /var/run/docker.sock: connect: permission denied
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container ls
+CONTAINER ID        IMAGE                  COMMAND             CREATED             STATUS                 PORTS                                                                                                  NAMES
+12be2644aa8a        centos:7               "bash"              2 minutes ago       Up 9 seconds                                                                                                                  naughty_perlman
+f3819a6ea483        pihole/pihole:latest   "/s6-init"          3 months ago        Up 4 weeks (healthy)   0.0.0.0:53->53/udp, 0.0.0.0:53->53/tcp, 0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp, 0.0.0.0:67->67/udp   pihole
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container exec 12be2644aa8a ps -ef
+UID        PID  PPID  C STIME TTY          TIME CMD
+root         1     0  0 13:35 pts/0    00:00:00 bash
+root        14     0  0 13:35 ?        00:00:00 ps -ef
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container top 12be2644aa8a
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                7305                7279                0                   10:35               pts/0               00:00:00            bash
+boss@main:~/environments/Docker_Training/Docker_Repo$ sudo docker container exec -it 12be2644aa8a bash
+[root@12be2644aa8a /]# ls -l
+total 60
+-rw-r--r--   1 root root 12148 May  4 15:37 anaconda-post.log
+lrwxrwxrwx   1 root root     7 May  4 15:35 bin -> usr/bin
+drwxr-xr-x   5 root root   360 Jun 15 13:35 dev
+drwxr-xr-x   1 root root  4096 Jun 15 13:32 etc
+drwxr-xr-x   2 root root  4096 Apr 11  2018 home
+lrwxrwxrwx   1 root root     7 May  4 15:35 lib -> usr/lib
+lrwxrwxrwx   1 root root     9 May  4 15:35 lib64 -> usr/lib64
+drwxr-xr-x   2 root root  4096 Apr 11  2018 media
+drwxr-xr-x   2 root root  4096 Apr 11  2018 mnt
+drwxr-xr-x   2 root root  4096 Apr 11  2018 opt
+dr-xr-xr-x 366 root root     0 Jun 15 13:35 proc
+dr-xr-x---   1 root root  4096 Jun 15 13:33 root
+drwxr-xr-x  11 root root  4096 May  4 15:37 run
+lrwxrwxrwx   1 root root     8 May  4 15:35 sbin -> usr/sbin
+drwxr-xr-x   2 root root  4096 Apr 11  2018 srv
+dr-xr-xr-x  13 root root     0 Jun 15 13:35 sys
+-rw-r--r--   1 root root    15 Jun 15 13:32 test.txt
+drwxrwxrwt   7 root root  4096 May  4 15:37 tmp
+drwxr-xr-x  13 root root  4096 May  4 15:35 usr
+drwxr-xr-x  18 root root  4096 May  4 15:36 var

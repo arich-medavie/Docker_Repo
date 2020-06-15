@@ -1,0 +1,45 @@
+MMTN214036:Docker_Training 00005538$ docker container attach
+MMTN214036:Docker_Training 00005538$ docker container run -d centos:7 ping 127.0.0.1
+af6f7b6e9baa0807de9ad1223606921393a3c1b4398b21f8c7060b9fd0f12f96
+MMTN214036:Docker_Training 00005538$ docker container attach af6f7b6e9baa0807de9ad1223606921393a3c1b4398b21f8c7060b9fd0f12f96
+64 bytes from 127.0.0.1: icmp_seq=11 ttl=64 time=0.027 ms
+64 bytes from 127.0.0.1: icmp_seq=12 ttl=64 time=0.025 ms
+64 bytes from 127.0.0.1: icmp_seq=13 ttl=64 time=0.028 ms
+64 bytes from 127.0.0.1: icmp_seq=14 ttl=64 time=0.028 ms
+64 bytes from 127.0.0.1: icmp_seq=15 ttl=64 time=0.028 ms
+64 bytes from 127.0.0.1: icmp_seq=16 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=17 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=18 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=19 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=20 ttl=64 time=0.054 ms
+64 bytes from 127.0.0.1: icmp_seq=21 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=22 ttl=64 time=0.055 ms
+64 bytes from 127.0.0.1: icmp_seq=23 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=24 ttl=64 time=0.091 ms
+64 bytes from 127.0.0.1: icmp_seq=25 ttl=64 time=0.053 ms
+64 bytes from 127.0.0.1: icmp_seq=26 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=27 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=28 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=29 ttl=64 time=0.053 ms
+64 bytes from 127.0.0.1: icmp_seq=30 ttl=64 time=0.053 ms
+^C
+--- 127.0.0.1 ping statistics ---
+30 packets transmitted, 30 received, 0% packet loss, time 29686ms
+rtt min/avg/max/mdev = 0.025/0.047/0.091/0.014 ms
+MMTN214036:Docker_Training 00005538$ docker container ls
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+MMTN214036:Docker_Training 00005538$ docker container run -d -it centos:7 ping 127.0.0.1
+a20b8f33178e28d22b7fe8fb23233cde04caa88ed6e8d74ecc22211e38c23f0b
+MMTN214036:Docker_Training 00005538$ docker container attach a20b8f33178e28d22b7fe8fb23233cde04caa88ed6e8d74ecc22211e38c23f0b
+64 bytes from 127.0.0.1: icmp_seq=13 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=14 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=15 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=16 ttl=64 time=0.052 ms
+64 bytes from 127.0.0.1: icmp_seq=17 ttl=64 time=0.053 ms
+^C
+--- 127.0.0.1 ping statistics ---
+17 packets transmitted, 17 received, 0% packet loss, time 16401ms
+rtt min/avg/max/mdev = 0.021/0.058/0.123/0.024 ms
+MMTN214036:Docker_Training 00005538$
+MMTN214036:Docker_Training 00005538$ docker container ls
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES

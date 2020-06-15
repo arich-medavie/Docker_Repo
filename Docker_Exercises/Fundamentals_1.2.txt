@@ -1,0 +1,12 @@
+MMTN214036:Docker_Training 00005538$ docker container ls
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+MMTN214036:Docker_Training 00005538$ docker container ls -a
+CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS                     PORTS               NAMES
+66714607307b        centos:7                 "echo 'hello world'"     10 seconds ago      Exited (0) 9 seconds ago                       elastic_volhard
+90079d4a6f38        hello-world              "/hello"                 2 hours ago         Exited (0) 2 hours ago                         elegant_hofstadter
+aaf48f17a84a        docker/getting-started   "nginx -g 'daemon of…"   13 days ago         Exited (0) 13 days ago                         mystifying_bardeen
+
+MMTN214036:Docker_Training 00005538$ docker container rm -f $(docker container ls -aq)
+66714607307b
+90079d4a6f38
+aaf48f17a84a

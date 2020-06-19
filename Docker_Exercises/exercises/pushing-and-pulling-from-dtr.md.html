@@ -1,0 +1,109 @@
+<html>
+<head>
+    <title>pushing-and-pulling-from-dtr.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="pushing-and-pulling-from-dtr">Pushing and Pulling From DTR</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Establish certificate trust between any Docker Engine and DTR</li>
+<li>Push and pull images from DTR</li>
+</ul>
+<h2 id="integrate-ucp-and-dtr">Integrate UCP and DTR</h2>
+<p>By default the Docker engine uses TLS when pushing and pulling images to an image registry like Docker Trusted Registry; as such, each Docker engine must be configured to trust DTR.</p>
+<ol>
+<li><p>Switch into your <code>ucp-manager-0</code> terminal. In ~/.bashrc, add the following line at the bottom:</p>
+<pre><code class="lang-bash">export DTR_FQDN=&lt;DTR FQDN&gt;
+</code></pre>
+<p>Where <code>&lt;DTR FQDN&gt;</code> is the FQDN you plan to access DTR at. This depends on how you set up DTR:</p>
+<ul>
+<li><strong>If you skipped</strong> setting up a load balancer for DTR, then use the FQDN for <code>ucp-manager-0</code>, your single DTR replica.</li>
+<li><strong>If you have a load balancer for DTR</strong>, then use the FQDN for the load balancer host, which should be that of your <code>infra</code> node.</li>
+</ul>
+<p><strong>Keep track of this DTR FQDN</strong>. We will use it throughout the following exercises; anywhere we refer to <code>&lt;DTR FQDN&gt;</code>, this is the FQDN we mean. </p>
+<p>Source this file via <code>source ~/.bashrc</code> so these changes take effect in the current terminal.</p>
+</li>
+<li><p>Download the DTR certificate:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ sudo curl -k https://${DTR_FQDN}:4443/ca \
+    -o /etc/pki/ca-trust/source/anchors/${DTR_FQDN}:4443.crt
+</code></pre>
+</li>
+<li><p>Refresh the list of certificates to trust:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ sudo update-ca-trust
+</code></pre>
+</li>
+<li><p>Restart the Docker daemon:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ sudo /bin/systemctl restart docker.service
+</code></pre>
+</li>
+<li><p>Log in to DTR from the command line:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker login ${DTR_FQDN}:4443
+</code></pre>
+<p>If your login is successful, you have configured your Docker engine to trust DTR.</p>
+</li>
+<li><p>Repeat steps 1-5 on all your VMs; every Docker engine in the swarm cluster must be configured to trust DTR.</p>
+</li>
+</ol>
+<h2 id="pushing-your-first-image">Pushing your first image</h2>
+<ol>
+<li><p>Via the DTR web UI, and click on the <strong>New Repository</strong> button to create a repository called <code>hello-world</code>. The repository should go under your <em>admin</em> account; click <strong>Create</strong> to create your first DTR repository.</p>
+</li>
+<li><p>On <code>ucp-manager-0</code>, pull the <code>hello-world</code> image from Docker Hub:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image pull hello-world:latest
+</code></pre>
+</li>
+<li><p>Re-tag the image, and note the correct namespacing for pushing to your DTR; the top level namespace must be the DTR FQDN and external port:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image tag hello-world:latest \
+    ${DTR_FQDN}:4443/admin/hello-world:1.0
+</code></pre>
+</li>
+<li><p>Push to DTR:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image push ${DTR_FQDN}:4443/admin/hello-world:1.0
+</code></pre>
+<p>and verify that you can see your image in DTR by navigating <strong>Repositories -&gt; admin/hello-world -&gt; Tags</strong>.</p>
+</li>
+<li><p>Now, we will configure the option to auto create a repository on push. In the DTR web UI, navigate <strong>System -&gt; General</strong>, and enable <strong>Create repository on push</strong>:</p>
+<p><img src="../images/screen-repo-on-push.png" alt="&quot;&quot;">/</p>
+</li>
+<li><p>Back on <code>ucp-manager-0</code>, re-tag the <code>hello-world</code> image for a repository that has not yet been created:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image tag \
+    hello-world:latest ${DTR_FQDN}:4443/admin/hellohello
+</code></pre>
+</li>
+<li><p>Push to DTR:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image push ${DTR_FQDN}:4443/admin/hellohello
+</code></pre>
+<p>and verify that a new repository has been created, containing a tag <code>hellohello:latest</code>.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we completed setting up DTR by establishing certificate trust between DTR and any Docker Engine that wants to interact with it. Also note the example of correct image namespacing: image names must begin with the trusted host for pushing to DTR, in this case <code>${DTR_FQDN}:4443/</code>. Failure to namespace images correctly will result in rejected attempts to <code>docker image push</code>.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

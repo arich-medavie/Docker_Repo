@@ -1,0 +1,150 @@
+<html>
+<head>
+    <title>combining-collections-and-kubernetes-namespaces.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="combining-collections-and-kubernetes-namespaces">Combining Collections and Kubernetes Namespaces</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Place UCP worker nodes in custom resource collections in order to govern their workloads via UCP RBAC</li>
+<li>Associate a Kubernetes namespace with a resource collection in order to confine deployments in that namespace to run only on worker nodes in that resource collection.</li>
+</ul>
+<h2 id="creating-collections">Creating Collections</h2>
+<ol>
+<li>Login to UCP via your admin account.</li>
+<li>Navigate to <strong>Shared Resources -&gt; Collections</strong>.</li>
+<li>On the collection <strong>Swarm</strong> click <strong>View Children</strong>; then do the same on the <strong>Shared</strong> collection, to navigate down through the collection hierarchy.</li>
+<li>Click <strong>Create Collection</strong> and enter <code>Development</code> under <em>Collection Name</em>. Then click <strong>Create</strong>.</li>
+<li>Create another sibling collection called <code>Production</code>.</li>
+</ol>
+<h2 id="associating-worker-nodes-with-collections">Associating Worker Nodes with Collections</h2>
+<p>We want to place worker nodes into the two collections we created above.</p>
+<ol>
+<li>Navigate to <strong>Shared Resources -&gt; Nodes -&gt; ucp-node-0</strong>; click on the gear in the top right, then click <strong>Collection</strong>.</li>
+<li>Click <strong>View Children</strong> under <em>Shared</em>, and then <strong>Select Collection</strong> beside <em>Development</em> and finally click <strong>Save</strong>, to place <code>ucp-node-0</code> in this collection.</li>
+<li>Follow the same procedure to move <code>ucp-node-1</code> into the <code>/Shared/Production</code> collection.</li>
+<li><p>Navigate to <strong>Kubernetes -&gt; Namespaces</strong>; if all has gone well, you should see the appropriate collections associated with the corresponding kube namespaces:</p>
+<p><img src="../images/screen-associated-collections.png" alt="&quot;&quot;">/</p>
+</li>
+</ol>
+<h2 id="creating-kubernetes-namespaces">Creating Kubernetes Namespaces</h2>
+<p>It is a good practice in Kubernetes to divide applications by namespaces.</p>
+<ol>
+<li>Navigate to <strong>Kubernetes -&gt; Namespaces</strong> and click <strong>Create</strong>.</li>
+<li><p>In the <strong>Object YAML</strong> field enter this content to create a <code>production</code> namespace:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+    name: production
+</code></pre>
+</li>
+<li><p>Click <strong>Create</strong> to have UCP create the namespace.</p>
+</li>
+<li>You should already have a namespace called <code>development</code> from an earlier exercise; if not, create it now.</li>
+</ol>
+<h2 id="associating-nodes-with-namespaces">Associating Nodes with Namespaces</h2>
+<ol>
+<li>Navigate to <strong>Kubernetes -&gt; Namespaces</strong>.</li>
+<li>Hover over the <code>development</code> namespace; click the <strong>...</strong> that appears on the right of the table row, and then click <strong>Link Nodes in Collection</strong></li>
+<li>Navigate down to <code>Swarm/Shared/</code> and click <strong>Select Collection</strong> beside <code>Development</code>. The table at the bottom should now show only <code>ucp-node-0</code> if everything has been set up correctly; if so, click <strong>Confirm</strong>. Kube workload in the <code>development</code> namespace will now be confined to <code>ucp-node-0</code>.</li>
+<li>Associate <code>ucp-node-1</code> with the <code>production</code> namespace by the same method.</li>
+</ol>
+<h2 id="creating-a-deployment-in-the-development-namespace">Creating a Deployment in the <code>development</code> namespace</h2>
+<ol>
+<li>Navigate to <strong>Kubernetes -&gt; Namespaces</strong>.</li>
+<li>Hover over <code>development</code> and click <strong>Set Context</strong>.</li>
+<li>Navigate <strong>Kubernetes -&gt; Create</strong>.</li>
+<li><p>In the <em>Object YAML</em> field enter this content to create a deployment:</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: development
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+</code></pre>
+</li>
+<li><p>Click <strong>Create</strong>.</p>
+<p>This will create a Kubernetes deployment object as well as a corresponding replicaSet managing 3 pods, each containing an instance of nginx. All these objects will live in the <code>development</code> namespace.</p>
+</li>
+<li><p>Navigate to <strong>Kubernetes -&gt; Controllers</strong>. You should see the <code>nginx-deployment</code> we just created above.</p>
+</li>
+<li><p>Navigate to <strong>Kubernetes -&gt; Pods</strong> and make sure they are all deployed on node <code>ucp-node-0</code> (this is the only worker node associated with collection <code>/Shared/Development</code> and linked to the <code>development</code> namespace.).</p>
+</li>
+</ol>
+<h2 id="creating-a-deployment-in-the-production-namespace">Creating a Deployment in the <code>production</code> namespace</h2>
+<p>Repeat the previous exercise but this time for the namespace <code>production</code>. Use the following yaml that defines our production deployment object:</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: tomcat-prod-deployment
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: tomcat
+  replicas: 5
+  template:
+    metadata:
+      labels:
+        app: tomcat
+    spec:
+      containers:
+      - name: tomcat
+        image: tomcat:9.0
+        ports:
+        - containerPort: 8080
+</code></pre>
+<h2 id="cleaning-up">Cleaning up</h2>
+<ol>
+<li>Set the context to namespace <code>development</code>.</li>
+<li>Navigate to <strong>Kubernetes -&gt; Controllers</strong>.</li>
+<li>Check the box beside the Deployment you just made and delete it (<strong>Actions -&gt; Remove</strong>).</li>
+<li>Do the same with the production deployment.</li>
+<li>Delete the two Kubernetes namespaces <code>development</code> and <code>production</code>.</li>
+<li>Move the two worker nodes back into the <code>/Shared</code> collection.</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise we have created multiple Kubernetes resources in their own custom namespaces from within UCP. We have associated worker nodes with different namespaces and as such made sure that the corresponding pods were only deployed to the designated worker nodes. Fluency with Kubernetes namespaces and RBAC for nodes in UCP is useful when managing multiple environments on the same cluster; we could imagine running development and testing versions of the same Kubernetes deployments on the same cluster, and prevent them from colliding in their label associations, DNS lookups and host resources by putting them in separate namespaces associated with separate nodes.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

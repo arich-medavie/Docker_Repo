@@ -1,0 +1,98 @@
+<html>
+<head>
+    <title>working-with-organizations-and-teams.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="working-with-organizations-and-teams">Working with Organizations and Teams</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Grant read and/or write access to a DTR repository based on user team membership</li>
+<li>Create a DTR access token to allow a user to make authenticated pushes and pulls from DTR without risking exposing their password </li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li>DTR set up as per the &#39;Install DTR&#39; exercise above.</li>
+</ul>
+<h2 id="creating-organizations-and-teams">Creating Organizations and Teams</h2>
+<ol>
+<li><p>Create two new user accounts, for users <em>chandrasekhar</em> and <em>suzuki</em>. You must be logged in as an admin to do this.</p>
+</li>
+<li><p>Create a new organization called <strong>myorg</strong> in DTR (navigate <strong>Organizations -&gt; New Organization</strong>).</p>
+</li>
+<li><p>Create two teams under myorg, <strong>database</strong> and <strong>web</strong> (navigate <strong>Organizations -&gt; myorg -&gt; Teams +</strong>).</p>
+</li>
+<li><p>Add Chandrasekhar to the database team, and Suzuki to the web team (navigate <strong>Organizations -&gt; myorg -&gt; database -&gt; Add User</strong>).</p>
+</li>
+<li><p>Create a repository <strong>myorg/db</strong> owned by myorg: navigate <strong>Organizations -&gt; myorg -&gt; Repositories -&gt; New Repository</strong>. Do the same again for another repo <strong>myorg/ui</strong>.</p>
+</li>
+<li><p>Give the database team R/W access to <strong>myorg/db</strong>: navigate <strong>Organizations -&gt; myorg -&gt; database -&gt; Repositories -&gt; New Repository -&gt; Existing</strong>, and pick the appropriate choices from the dropdown lists.</p>
+</li>
+<li><p>Finally, assign the following permissions in the same fashion:</p>
+<ul>
+<li>database team, R/O access to <strong>myorg/ui</strong></li>
+<li>web team, R/W access to <strong>myorg/ui</strong></li>
+<li>web team, R/O access to <strong>myorg/db</strong></li>
+</ul>
+</li>
+</ol>
+<h2 id="r-w-in-org-repos">R/W in Org Repos</h2>
+<ol>
+<li><p>Log in to the DTR web UI as Suzuki, and click on <strong>Repositories</strong> on the left sidebar to see a list of all repos you have read access to. Use the dropdown to filter only repos that belong to the myorg org.</p>
+</li>
+<li><p>On <code>ucp-manager-0</code>, tag any arbitrary image as <code>${DTR_FQDN}:4443/myorg/ui:1.0</code></p>
+</li>
+<li><p>Log in to DTR from the bash shell as Suzuki, and push the ui image you just tagged. Everything should proceed as normal:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker login ${DTR_FQDN}:4443
+[centos@ucp-manager-0 ~]$ docker image push ${DTR_FQDN}:4443/myorg/ui:1.0
+</code></pre>
+</li>
+<li><p>Tag another image as <code>${DTR_FQDN}:4443/myorg/ui:1.1</code>, log in to DTR from the shell as Chandrasekhar this time, and push the image. The image push should fail - why?</p>
+</li>
+<li><p>Log into the DTR web UI as admin, and set both the <code>db</code> and <code>ui</code> repositories to <strong>Private</strong> (look under the <strong>Settings</strong> tab for each). A &#39;private&#39; icon should appear next to the repo name when this has been set correctly. Then log in to the DTR web UI as Suzuki and check if that user can still see <code>myorg/ui</code> and <code>myorg/db</code>. Why or why not?</p>
+</li>
+<li><p>Finally, revoke the database team&#39;s read only permission to the <code>ui</code> repo, and the web team&#39;s read only permission to the <code>db</code> repo. Can Suzuki see both repositories now? Why or why not?</p>
+</li>
+</ol>
+<h2 id="establishing-access-tokens">Establishing Access Tokens</h2>
+<ol>
+<li><p>Log into the DTR web UI as admin, and navigate <strong>Users -&gt; Suzuki -&gt; Access Tokens</strong>.</p>
+</li>
+<li><p>Click <strong>New access token</strong>, give the token a name, and click <strong>Create</strong>. An access token is presented <em>only this once</em>! Copy it, don&#39;t lose it, and click <strong>Done</strong>.</p>
+</li>
+<li><p>Try logging into DTR from the CLI as Suzuki, using this new access token instead of Suzuki&#39;s usual password. It should succeed.</p>
+</li>
+<li><p>Try logging into the DTR or UCP web frontend with this token; the login will fail. Access tokens are only for <code>docker login</code> purposes - not authenticating with the DE API.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we saw how organization-owned repositories appear on DTR. Users can read and write to repos based on the permissions afforded them by their team; private org-owned repos become invisible to any user without at least explicit read access to that repo.</p>
+<p>Access tokens can also be granted to users to obfuscate upstream passwords; if an access token is compromised, it can be rotated out without revealing the user&#39;s root password.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

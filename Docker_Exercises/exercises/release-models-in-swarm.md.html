@@ -1,0 +1,140 @@
+<html>
+<head>
+    <title>release-models-in-swarm.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="release-models-in-swarm">Release Models in Swarm</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure an external load balancer to route traffic to the swarm mesh net for canary and blue / green releases.</li>
+</ul>
+<h2 id="blue-green-releases">Blue / Green Releases</h2>
+<p>In a blue / green release, we maintain two versions of our app simultaneously: the current production version (call that the &#39;green&#39; version) which our external load balancers route traffic to, and the next version we&#39;re considering rolling out to production (call that the &#39;blue&#39; version) which is currently not routed to in production. Once we&#39;re satisfied that the blue version is ready for release, we switch our load balancer to point at the blue version instead of the green, and their roles reverse: blue is now in production, and green can be updated and tested safely.</p>
+<ol>
+<li><p>Deploy version 1.0 of your app as a swarm service on the L4 mesh at port 8000, and version 2.0 on port 8001:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create \
+    -p 8000:80 \
+    --name current_production \
+    training/petpic:1.0
+
+[centos@ucp-manager-0 ~]$ docker service create \
+    -p 8001:80 \
+    --name production_candidate \
+    training/petpic:2.0
+</code></pre>
+<p>Visit any public IP in your cluster on port 8000 and 8001, and confirm you can see versions 1.0 (goats) and 2.0 (cats) of our app, respectively.</p>
+</li>
+<li><p>On your <code>infra</code> node, create a directory <code>/home/centos/nginx</code>, and in it place a load balancer config file called <code>nginx.conf</code> with the following content:</p>
+<pre><code class="lang-bash">user  nginx;
+worker_processes  1;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+stream {
+    upstream ucp_workers {
+        server &lt;ucp-node-0 private IP&gt;:8000;
+        server &lt;ucp-node-1 private IP&gt;:8000;
+    }
+    server {
+    listen 80;
+        proxy_pass ucp_workers;
+    }
+}
+</code></pre>
+<p>This will load balance traffic arriving at your proxy&#39;s port 80 across port 8000 on each of your UCP worker, where version 1.0 of our app is currently being served - the &#39;green&#39; version of our deployment.</p>
+</li>
+<li><p>Make sure your <code>infra</code> node&#39;s Docker client is pointing at its own Docker engine by setting the context back to <code>default</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use default
+</code></pre>
+</li>
+<li><p>Start a containerized load balancer on your <code>infra</code> node, sending traffic to your &#39;green&#39; deployment:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker container run -d --name worker-lb \
+    --restart=unless-stopped \
+    -p 8000:80 \
+    -v /home/centos/nginx:/etc/nginx \
+    nginx:stable-alpine
+</code></pre>
+<blockquote>
+<p><strong>Mounting configurations</strong>: if you look very closely, we&#39;re mounting this <code>nginx.conf</code> a little differently than we did for our UCP load balancer. For UCP, we mounted the configuration file in directly; in this case, we&#39;re mounting a whole directory into our container that includes the proxy config file. This is because we&#39;re going to change this config file when we want to flip from our green to our blue deployment in the next step, and depending on which text editor you use to edit the config file on the host, you may break the volume mount! Certain text editors (like <code>vim</code>) actually create a new file and copy it into place when saving a file, which will break the bind mount for that file if it has been mounted directly. Using a text editor that makes changes in place (like <code>nano</code>) avoids this problem, as does mounting a directory containing the file rather than the file itself, as we&#39;re doing here.</p>
+</blockquote>
+<p>Visit your 1.0 deployment via your load balancer at <code>&lt;infra public IP&gt;:8000</code> to confirm all is working well.</p>
+</li>
+<li><p>Once you&#39;re ready to switch from your &#39;green&#39; to your &#39;blue&#39; deployment, open <code>nginx.conf</code> and change port 8000 in the <code>ucp_workers</code> block (where your &#39;green&#39; environment is accepting ingress) to port 8001 (where your &#39;blue&#39; environment is listening).</p>
+</li>
+<li><p>Next you&#39;ll need to reload nginx. Start a shell in your load balancer container:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker container exec -it worker-lb sh
+</code></pre>
+</li>
+<li><p>Reload nginx, and list processes:</p>
+<pre><code class="lang-bash">/ # nginx -s reload
+2018/10/19 16:27:15 [notice] 69#69: signal process started
+
+/ # ps
+PID   USER     TIME   COMMAND
+    1 root       0:00 nginx: master process nginx -g daemon off;
+   59 root       0:00 sh
+   66 nginx      0:00 nginx: worker process is shutting down
+   70 nginx      0:00 nginx: worker process
+   71 root       0:00 ps
+</code></pre>
+<p>You may or may not see an nginx process with the message <code>worker process is shutting down</code> like above. If you don&#39;t, that&#39;s ok, no action is needed. If you do, kill it with <code>kill &lt;PID&gt;</code>, where <code>&lt;PID&gt;</code> can be found in the leftmost column of the <code>ps</code> output (<code>66</code> in the example above).</p>
+</li>
+<li><p>Refresh your browser&#39;s connection to <code>&lt;infra public IP&gt;:8000</code>. You should see a picture of a cat, served by version 2.0 of our app - the &#39;blue&#39; version of our production environment, to which your load balancer is now sending all traffic. (If you still see the goats, try a hard refresh of your browser - the goats picture might be sitting in your browser&#39;s cache).</p>
+</li>
+</ol>
+<h2 id="canary-releases">Canary Releases</h2>
+<p>While blue / green deployments rely on internal testing of the offline environment, a <em>canary deployment</em> is designed to gather user feedback on updates while minimizing risk. To do this, we configure an external load balancer to route only a small fraction of traffic to our canary deployment, while the bulk of traffic is sent to our stable deployment.</p>
+<ol>
+<li><p>In your load balancer configuration <code>nginx.conf</code>, change the <code>upstream</code> block to look like this:</p>
+<pre><code class="lang-bash">upstream ucp_workers {
+    server &lt;ucp-node-0 private IP&gt;:8000 weight=4;
+    server &lt;ucp-node-1 private IP&gt;:8000 weight=4;
+    server &lt;ucp-node-0 private IP&gt;:8001 weight=1;
+    server &lt;ucp-node-1 private IP&gt;:8001 weight=1;
+}
+</code></pre>
+<p>This instructs nginx to send 8 out of every 10 requests to our 1.0 deployment on port 8000 (split evenly 4 and 4 across our two workers), and the other 2 out of 10 requests to our canary listening on port 8001, again split equally across our two workers.</p>
+</li>
+<li><p>Reload nginx as you did in the previous section.</p>
+</li>
+<li><p>Attempt to <code>curl</code> your load balancer&#39;s public port: <code>curl &lt;infra public IP&gt;:8000</code>. Do this 10 times; you should see 8 of the requests getting routed to the 1.0 version, and two to the 2.0 version.</p>
+</li>
+<li><p>Clean up everything by removing your <code>worker-lb</code> container on <code>infra</code>, and your <code>current_production</code> and <code>production_candidate</code> services from <code>ucp-manager-0</code>.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you saw simple examples of using an external load balancer to set up blue / green and canary releases of swarm services on the L4 mesh net. Note that this only applies to services exposed on the external mesh; there&#39;s no straightforward way to do something analogous for services communicating by VIP internally to your swarm, since a VIP only ever points to one set of identically configured containers, and can&#39;t be changed. If you want to achieve similar release models internally to your swarm, you need to introduce another degree of freedom in service discovery therein; for example, another service through which your application logic performs service discovery and which you can configure with more sophisticated routing rules, rather than relying on the swarm built-in DNS lookup.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

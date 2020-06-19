@@ -1,0 +1,58 @@
+<html>
+<head>
+    <title>ucp-audit-logs.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="ucp-audit-logs">UCP Audit Logs</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure and retrieve UCP API audit logs via <code>ucp-controller</code> container logs</li>
+</ul>
+<h2 id="configuring-audit-logs">Configuring Audit Logs</h2>
+<ol>
+<li><p>UCP has a simple UI to check the level of the Audit Logs and change it. In UCP, navigate to <strong>admin -&gt; Admin Settings -&gt; Audit Logs</strong>. You see the different audit log levels. The selected one, by default <code>None</code>, is the currently enabled one.</p>
+</li>
+<li><p>Select the highest level <code>Request</code>, and click <code>Save</code>.  With this level, basic metadata as well as the request body will be logged.</p>
+</li>
+<li><p>Log in to UCP as any user other than admin; I&#39;ll use <code>chloe</code> in this example, but it can be anyone. Create any swarm service as user <code>chloe</code>, for example with service name <code>demo</code> and image <code>nginx:latest</code>.</p>
+</li>
+<li><p>Search the logs of the <code>ucp-controller</code> container on <code>ucp-manager-0</code> for audit records from user <code>chloe</code> hitting the <code>service/create</code> endpoint:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker container logs \
+    ucp-controller 2&gt;&amp;1 | grep &quot;services/create.*chloe&quot; | jq
+</code></pre>
+<p>You should see a large JSON object describing the audit log, identifying the endpoint hit, the user who hit it, timestamps for the request, and other metadata describing the event. If the above command returns nothing, try it on <code>ucp-manager-1</code> and <code>ucp-manager-2</code>; the API call may have got load balanced to one of your other managers.</p>
+</li>
+<li><p>Clean up by deleting the service you just created.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we extracted audit logs from UCP, via the logs of the <code>ucp-controller</code> container. Audit logs are a key observability component that tracks all security-relevant events on the platform, and give complete historical perspectives on deployments to underwrite troubleshooting.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

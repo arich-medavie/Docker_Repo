@@ -1,0 +1,186 @@
+<html>
+<head>
+    <title>health-checks.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="health-checks">Health Checks</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Specify a healthcheck endpoint in a Dockerfile or a yaml description of a Kubernetes deployment</li>
+<li>Configure healthcheck probes in Swarm and Kubernetes</li>
+</ul>
+<h2 id="analyzing-the-dockerfile">Analyzing the Dockerfile</h2>
+<ol>
+<li><p>Please visit the source code to this service, which can be found here: <a href="https://github.com/docker-training/healthcheck.git">https://github.com/docker-training/healthcheck.git</a>.</p>
+</li>
+<li><p>First let&#39;s look at the <code>Dockerfile</code> for this service. It looks as follows:</p>
+<pre><code class="lang-bash">FROM ubuntu:16.04
+
+RUN apt-get update &amp;&amp; apt-get -y upgrade
+RUN apt-get -y install python-pip curl
+RUN pip install flask==0.10.1
+
+ADD /app.py /app/app.py
+WORKDIR /app
+
+HEALTHCHECK CMD curl --fail http://localhost:5000/health || exit 1
+
+CMD python app.py
+</code></pre>
+<p>Please specifically note the <code>HEALTHCHECK</code> line, which defines the command used to evaluate the health of the application. Exit code 0 is interpreted as healthy, and exit code 1 is interpreted as unhealthy.</p>
+</li>
+<li><p>Have a look at the application code itself; the most important part for healthchecking is the <code>/health</code> route:</p>
+<pre><code class="lang-python">@app.route(&#39;/health&#39;)
+def health():
+    global healthy
+
+    if healthy:
+        return &#39;OK&#39;, 200
+    else:
+        return &#39;NOT OK&#39;, 500
+</code></pre>
+<p>The app performs some logic to decide if it is healthy or not when <code>/health</code> is visited. This toy example just checks a bit, but a real example would have the same structure.</p>
+</li>
+</ol>
+<h2 id="deploying-a-healthcheck-enabled-service">Deploying a Healthcheck-Enabled Service</h2>
+<ol>
+<li><p>Deploy a service with healthchecks enabled. This service will perform a healthcheck every two seconds; wait two seconds for a healthy response each time; declare a container failed after three consecutive failures; and wait 10 seconds after container launch to begin the healthchecks:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name app \
+    --health-interval 2s \
+    --health-timeout 2s \
+    --health-retries 3 \
+    --health-start-period 10s \
+    -p 5000:5000 training/healthcheck:ee3.0
+</code></pre>
+</li>
+<li><p>Open a second connection tab to <code>ucp-manager-0</code> and run the following command to observe the <code>app</code> service:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ watch docker service ps app
+</code></pre>
+<p>you should see something like this:</p>
+<pre><code class="lang-bash">Every 2.0s: docker service ps app
+
+ID            NAME        IMAGE              NODE        DESIRED STATE  CURRENT STATE
+ralw1apn8mgs  app.1       training/          ucp-node-0  Running        Running 25 
+                           healthcheck:ee3.0                             seconds ago
+</code></pre>
+<p>As we can see, the service is up and running happily.</p>
+</li>
+<li><p>But now we want to disrupt this peaceful state a bit. In your first terminal execute the command to put the service into an unhealthy status:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl localhost:5000/kill -4
+</code></pre>
+<p>This flips the health bit in our app, so it starts reporting as unhealthy.</p>
+</li>
+<li><p>Observe what&#39;s happening in the second terminal where you run the <code>watch</code> command. After approximately 8 seconds you should see that the running instance gets killed and a new instance is started instead.</p>
+</li>
+<li><p>Explain the delay between the kill command and the moment the service gets effectively killed.</p>
+</li>
+<li><p>If Kibana is still running from a previous exercise, visit your Kibana UI and search for <code>&quot;unhealthy container&quot;</code> to see the system events logged when a healthcheck killed the container.</p>
+</li>
+<li><p>To get some detailed information about the last five healthchecks on a container, find the node the container is running on and do:</p>
+<pre><code class="lang-bash">[centos@ucp-x ~]$ docker container inspect \
+    --format &#39;{{json .State.Health.Log}}&#39; &lt;container id&gt; | jq
+</code></pre>
+</li>
+<li><p>Clean up the system by removing the service:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service rm app
+</code></pre>
+</li>
+</ol>
+<h2 id="running-a-pod-with-a-liveness-probe">Running a Pod with a Liveness Probe</h2>
+<p><em>This exercise adapted from <a href="https://bit.ly/2ReDQNR">https://bit.ly/2ReDQNR</a> in accordance with <a href="https://bit.ly/1rMF155">CC-BY-4.0</a></em></p>
+<ol>
+<li><p>On <code>infra</code>, point <code>kubectl</code> at UCP:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ export KUBECONFIG=~/kube.yml
+</code></pre>
+</li>
+<li><p>On your <code>infra</code> node, create a file <code>liveness.yaml</code> with the following content:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-demo
+spec:
+  containers:
+  - name: liveness
+    image: busybox:latest
+    args: [&quot;/bin/sh&quot;, &quot;-c&quot;, &quot;touch /tmp/healthy; 
+        sleep 30; rm -rf /tmp/healthy; sleep 600&quot;]
+    livenessProbe:
+      exec:
+        command: [&quot;cat&quot;, &quot;/tmp/healthy&quot;]
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+</code></pre>
+<p>This pod creates a file <code>/tmp/healthy</code> when it starts, waits 30 seconds, and deletes the file. Meanwhile, Kubernetes will run a liveness probe defined by the <code>livenessProbe</code> block:</p>
+<ul>
+<li><code>exec:command</code> is the command that will be run inside this container every probe check; in this case, it checks to see if the file <code>/tmp/healthy</code> is present. If so, the check passes; if not, the check fails.</li>
+<li><code>initialDelaySeconds</code> tells Kubernetes to wait 5 seconds after container startup before starting the healthcheck intervals</li>
+<li><code>periodSeconds</code> tells Kube to do a healthcheck every 5 seconds</li>
+<li><code>timeoutSeconds</code> tells Kube to consider the check failed if it hangs for more than 1 second</li>
+<li><code>failureThreshold</code> is the number of consecutive failures required before Kubernetes restarts this container</li>
+</ul>
+</li>
+<li><p>Deploy this pod:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl create -f liveness.yaml 
+</code></pre>
+</li>
+<li><p>Describe your pod with <code>kubectl describe pod liveness-demo</code>. At first, everything should report healthy, but after 30-35 seconds, liveness probes will begin to fail with the event report:</p>
+<pre><code class="lang-bash">Events:
+  Type     Reason     Age   From                 Message
+  ----     ------     ----  ----                 -------
+  Normal   Scheduled  36s   default-scheduler    Successfully assigned 
+                                                 default/liveness-demo to ucp-node-1
+  Normal   Pulling    35s   kubelet, ucp-node-1  pulling image &quot;busybox:latest&quot;
+  Normal   Pulled     34s   kubelet, ucp-node-1  Successfully pulled image 
+                                                 &quot;busybox:latest&quot;
+  Normal   Created    34s   kubelet, ucp-node-1  Created container
+  Normal   Started    34s   kubelet, ucp-node-1  Started container
+  Warning  Unhealthy  2s    kubelet, ucp-node-1  Liveness probe failed: cat: can&#39;t 
+                                                 open &#39;/tmp/healthy&#39;: No such 
+                                                 file or directory
+</code></pre>
+<p>After three of these failures, the container will be restarted; a record of how many container restarts have transpired is presented in <code>kubectl</code>&#39;s pod summary:</p>
+<pre><code>[centos@infra ~]$ kubectl get pods
+
+NAME            READY   STATUS    RESTARTS   AGE
+liveness-demo   1/1     Running   3          3m
+</code></pre><p>Finally, notice that even as the container restarts, the pod persists; the pause container within the pod is not restarted, and maintains the pod&#39;s IP address and shared namespaces so that healthchecks can restart unhealthy containers without rescheduling the whole pod.</p>
+</li>
+<li><p>Clean up with <code>kubectl delete -f liveness.yaml</code>. Don&#39;t forget to switch the context on <code>infra</code> back to the local engine and kube instance:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use default
+[centos@infra ~]$ unset KUBECONFIG
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we stepped through the configuration and behavior of healthcheck-enabled containers in both Swarm and Kubernetes. <em>All</em> Swarm services and Kubernetes deployments should have healthchecks defined for them, as part of the automation and self-healing of your containerized workloads. Make sure your developers understand this requirement, so they can provide insightful healthcheck endpoints in their containerized software. </p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

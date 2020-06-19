@@ -1,0 +1,163 @@
+<html>
+<head>
+    <title>user-management-with-ldap.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="user-management-with-ldap">User Management with LDAP</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure UCP to pull users from an existing LDAP server</li>
+<li>Populate UCP teams via LDAP groups or searches</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li>UCP installation.</li>
+</ul>
+<h2 id="setting-up-the-ldap-server">Setting Up the LDAP Server</h2>
+<ol>
+<li><p>We&#39;ll set up a demo LDAP server on your <code>infra</code> node. Start by making sure your <code>infra</code> node&#39;s Docker and kube clients are pointing locally by setting the context correctly:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use default
+[centos@infra ~]$ unset KUBECONFIG
+</code></pre>
+</li>
+<li><p>On your <code>infra</code> node, spin up a containerized LDAP demo:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker container run -d -p 80:80 -p 389:389 training/ldap:latest
+</code></pre>
+</li>
+<li><p>Open a browser and go to <code>http://&lt;infra FQDN&gt;/phpldapadmin</code>. This will open up the GUI for your LDAP server.</p>
+</li>
+<li><p>Login to the server with the following credentials:</p>
+<p><strong>Login DN:</strong> <code>cn=admin,dc=test,dc=com</code>
+<strong>Password:</strong> <code>admin</code></p>
+</li>
+<li><p>Expand the left navigation bar and take note of the LDAP entries underneath <code>ou=Staff</code>, and <code>ou=Groups</code>:</p>
+<p><img src="../images/ldap-tree.png" alt="&quot;&quot;">/</p>
+</li>
+</ol>
+<h2 id="integrate-ucp-and-ldap">Integrate UCP and LDAP</h2>
+<ol>
+<li><p>Login to UCP as the admin user.</p>
+</li>
+<li><p>Navigate <strong>admin -&gt; Admin Settings</strong> -&gt; <strong>Authentication and Authorization</strong>, and click <strong>YES</strong> under <em>LDAP Enabled</em>.</p>
+</li>
+<li><p>In the <em>LDAP Server</em> form, fill in:</p>
+<ul>
+<li>LDAP Server URL: <code>ldap://&lt;infra FQDN&gt;</code></li>
+<li>Reader DN: <code>uid=bravo,ou=Staff,dc=test,dc=com</code></li>
+<li>Reader Password: <code>password</code></li>
+</ul>
+</li>
+<li><p>Click <strong>Add LDAP User Search Configurations +</strong> and fill in:</p>
+<ul>
+<li>Base DN: <code>dc=test,dc=com</code></li>
+<li>Username Attribute: <code>uid</code></li>
+<li>Fullname Attribute: <code>cn</code></li>
+<li>Filter: <code>objectClass=inetOrgPerson</code></li>
+<li>Check <strong>Search subtree instead of just one level</strong></li>
+<li>Click <strong>Confirm</strong></li>
+</ul>
+</li>
+<li><p>Under <em>LDAP Test Login</em>, fill in:</p>
+<ul>
+<li>Username: bravo</li>
+<li>Password: password</li>
+</ul>
+</li>
+<li><p>Still under <em>LDAP Test Login</em>, click <strong>Test</strong>. A successful login test should be reported.</p>
+</li>
+<li><p>Under <em>LDAP Sync Configuration</em>, enter <code>24</code> for the <strong>Sync Interval (Hours)</strong> field.</p>
+</li>
+<li><p>Click <strong>Save</strong>.</p>
+</li>
+</ol>
+<h2 id="testing-user-access">Testing User Access</h2>
+<ol>
+<li><p>In the <em>LDAP Sync Jobs</em> section, click on the <strong>Sync Now</strong> button.</p>
+</li>
+<li><p>Return to the UCP dashboard, and navigate <strong>Access Control -&gt; Users</strong>. None of the LDAP users appear listed here. UCP only moves user accounts over when the user first logs in.</p>
+</li>
+<li><p>Logout of UCP as the admin user, and log back in as user <code>bravo</code> / password <code>password</code>.</p>
+</li>
+<li><p>Log back in as the admin user, and check the users list again. <code>bravo</code> now appears listed here.</p>
+</li>
+</ol>
+<h2 id="populating-teams-from-ldap-groups">Populating Teams from LDAP Groups</h2>
+<ol>
+<li><p>Go back to the LDAP configuration page (<strong>admin -&gt; Admin Settings -&gt; Authentification &amp; Authorization</strong>):</p>
+<ul>
+<li>uncheck <em>Just-in-time User Provisioning</em></li>
+<li>Save the config</li>
+<li>click <strong>Sync Now</strong>.</li>
+</ul>
+<p>This is not strictly necessary for populating teams, but will make it easier to see who is getting put in your teams without having to log in as each one to trigger the JIT provisioning.</p>
+</li>
+<li><p>Create an <code>engineering</code> organization via <strong>Access Control -&gt; Orgs &amp; Teams</strong>.</p>
+</li>
+<li><p>Make a team <code>devops</code> in your <code>engineering</code> organization, and click <strong>Yes</strong> under <em>Enable Sync Team Members</em> when creating the team.</p>
+</li>
+<li><p>Click <strong>Match Group Members</strong> to populate this team based on an LDAP group.</p>
+</li>
+<li><p>Fill out the subsequent fields:</p>
+<ul>
+<li>Group DN: <code>cn=devops,ou=groups,dc=test,dc=com</code></li>
+<li>Group Member Attribute: <code>uniqueMember</code></li>
+</ul>
+</li>
+<li><p>Click <strong>Yes</strong> under <em>Immediately Sync Team Members</em>, and finally click <strong>Create</strong>.</p>
+</li>
+<li><p>Navigate back to your new devops team users listing; the same users in the devops team in the LDAP browser should now be members of your devops team in UCP.</p>
+</li>
+</ol>
+<h2 id="populating-teams-from-ldap-searches">Populating Teams from LDAP Searches</h2>
+<ol>
+<li><p>Make a team <code>staff</code> in your <code>engineering</code> organization, and click <strong>Yes</strong> under <strong>Enable Sync Team Members</strong> when creating the team.</p>
+</li>
+<li><p>Click <strong>Match Search Results</strong> to populate this team based on an LDAP search.</p>
+</li>
+<li><p>Enter <code>dc=test,dc=com</code> for <em>Search Base DN</em></p>
+</li>
+<li><p>Enter <code>ou=Staff</code> for <em>Search Filter</em></p>
+</li>
+<li><p>Check <strong>Search subtree instead of just one level</strong>, and <strong>Yes</strong> for <em>Immediately sync team members</em></p>
+</li>
+<li><p>Click <strong>Create</strong> at the bottom, and navigate to the user list for the <code>staff</code> team. The team is populated with users matching your search criteria.</p>
+</li>
+</ol>
+<h2 id="cleanup">Cleanup</h2>
+<ol>
+<li><p>Disable the LDAP integration by selecting <strong>No</strong> under <em>LDAP Enabled</em> on the <strong>Authentication and Authorization</strong> admin settings page.</p>
+</li>
+<li><p>Click <strong>Save</strong>.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we imported users from an LDAP server. Users will be populated with just-in-time provisioning on their first login by default, unaffiliated with any team. UCP teams can be populated from LDAP groups or by LDAP searches.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

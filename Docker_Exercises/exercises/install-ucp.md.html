@@ -1,0 +1,143 @@
+<html>
+<head>
+    <title>install-ucp.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="install-ucp">Install UCP</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Install Universal Control Plane on a single manager node</li>
+<li>Join worker nodes to UCP</li>
+<li>Confirm correct basic configuration of UCP, including licensing, certificates, and clock sync.</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li><p>Three nodes running centos:7.5 or later, and Docker Enterprise 19.03.0-ee or later, named as per:</p>
+<ul>
+<li><code>ucp-manager-0</code></li>
+<li><code>ucp-node-0</code></li>
+<li><code>ucp-node-1</code></li>
+</ul>
+</li>
+<li><p>A UCP license. If you don&#39;t have one, a trial license is available at <a href="https://store.docker.com/bundles/docker-datacenter/purchase?plan=free-trial">https://store.docker.com/bundles/docker-datacenter/purchase?plan=free-trial</a> (please write &#39;Docker Training&#39; in the &#39;Last Name&#39; field of the license registration form).</p>
+</li>
+</ul>
+<h2 id="checking-ntp">Checking ntp</h2>
+<ol>
+<li><p>While not strictly required, the <code>ntp</code> utility ensures clock synchronization across your cluster, helping you avoid a number of related problems. Check that <code>ntp</code> is running on <code>ucp-manager-0</code>, <code>ucp-node-0</code> and <code>ucp-node-1</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ sudo /bin/systemctl status ntpd.service
+● ntpd.service - Network Time Service
+   Loaded: loaded (/usr/lib/systemd/system/ntpd.service; enabled; 
+                  vendor preset: disabled)
+   Active: active (running) since Sat 2017-10-14 02:14:40 UTC; 39min ago
+   ...
+</code></pre>
+<blockquote>
+<p>Note it&#39;s important that <code>ntp</code> is up and running <em>before</em> installing UCP.</p>
+</blockquote>
+</li>
+</ol>
+<h2 id="installing-ucp">Installing UCP</h2>
+<ol>
+<li><p>On <code>ucp-manager-0</code>, use the UCP bootstrapper to install UCP:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ UCP_IP=&lt;ucp-manager-0 public IP&gt; 
+[centos@ucp-manager-0 ~]$ UCP_FQDN=&lt;ucp-manager-0 FQDN&gt;    
+[centos@ucp-manager-0 ~]$ docker container run --rm -it --name ucp \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    docker/ucp:3.2.5 install \
+    --admin-username admin \
+    --admin-password adminadmin \
+    --san ${UCP_IP} \
+    --san ${UCP_FQDN}
+</code></pre>
+</li>
+</ol>
+<h2 id="licensing-the-installation">Licensing the installation</h2>
+<ol>
+<li><p>In your browser, visit the UCP interface at <code>https://&lt;public IP of ucp-manager-0&gt;</code>.</p>
+<p><strong>Note:</strong> Most browsers will display some sort of warning message regarding the connection. This is because we are using the default self signed certificates as opposed to a certificate from a trusted source. You can tell the browser to ignore the warning and proceed.</p>
+</li>
+<li><p>Login to your admin account; as per the flags in the install command above, your username is <code>admin</code> and your password is <code>adminadmin</code>.</p>
+</li>
+<li><p>Once logged in you will see a prompt screen asking you to upload a license. Click the <strong>Upload License</strong> button and upload your UCP license; if you need a trial license, click the <strong>Get free trial or license</strong> button, and follow the prompts (please write &#39;Docker Training&#39; in the &#39;Last Name&#39; field of the license registration form).</p>
+</li>
+</ol>
+<h2 id="checking-sans">Checking SANs</h2>
+<ol>
+<li><p>On the left sidebar, navigate <strong>Shared Resources</strong> -&gt; <strong>Nodes</strong> -&gt; <strong>ucp-manager-0</strong>, and scroll down in the resulting view to where is says <strong>SANS</strong>. Confirm that the FQDN and public IP of the <code>ucp-manager-0</code> node are in the list. You specified these at install via the <code>--san</code> flag to the UCP bootstrapper. <strong>Failing to specify SANs correctly will cause TLS failures when communicating with other nodes if left unaddressed,</strong> since these SANs are added to this node&#39;s certificate.</p>
+<p><img src="../images/screen-UCP-sans.png" alt="&quot;&quot;">/</p>
+</li>
+</ol>
+<h2 id="adding-additional-worker-nodes">Adding additional worker nodes</h2>
+<ol>
+<li><p>Navigate <strong>Shared Resources</strong> -&gt; <strong>Nodes</strong> -&gt; <strong>Add Node</strong>. A swarm join token is presented which can be used to add workers to your UCP cluster.</p>
+</li>
+<li><p>Cut and paste the <code>docker swarm join...</code> token presented in the previous step in the terminal on <code>ucp-node-0</code> and <code>ucp-node-1</code>. After a moment, they should be visible on the <strong>Nodes</strong> view of UCP as workers.</p>
+<p><img src="../images/screen-UCP-workers.png" alt="&quot;&quot;">/</p>
+</li>
+</ol>
+<h2 id="configuring-worker-orchestrators">Configuring Worker Orchestrators</h2>
+<p>By default, the two workers you just added will only accept Swarm workloads; let&#39;s configure them to accept Swarm or Kubernetes workloads.</p>
+<blockquote>
+<p>Note: Mixed orchestrator configuration is not recommended in production. For critical clusters, allocate some nodes for Swarm workloads, and some nodes for Kubernetes workloads, as needed.</p>
+</blockquote>
+<ol>
+<li><p>Navigate <strong>Shared Resources -&gt; Nodes -&gt; ucp-node-0</strong>. Click on the gear in the top right to edit this node&#39;s configuration.</p>
+</li>
+<li><p>Under <em>Orchestrator Type</em>, click <strong>Mixed</strong>.</p>
+</li>
+<li><p>Click <strong>Save</strong> in the bottom right.</p>
+</li>
+<li><p>Repeat these steps for <code>ucp-node-1</code>.</p>
+</li>
+</ol>
+<h2 id="-optional-uninstalling-ucp">(Optional) Uninstalling UCP</h2>
+<blockquote>
+<p><strong>STOP</strong>: Only do this if your installation failed and you need to start over!</p>
+</blockquote>
+<p>If for some reason we need to uninstall UCP we can use the following commands.</p>
+<ol>
+<li><p>Remove UCP:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker container run --rm -it --name ucp \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    docker/ucp:3.2.5 uninstall-ucp \
+    --id &lt;UCP ID&gt;
+</code></pre>
+<p><strong>Note:</strong> to find out the <code>&lt;UCP ID&gt;</code> we can first run the above command without the <code>--id</code> parameter. The command will fail and tell us which ID to use.</p>
+</li>
+<li><p>Clean up orphaned resources:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker system prune -f
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>At this point, UCP is installed with one manager and two worker nodes. Bear in mind that UCP is really just a collection of containers running on a swarm. Alternatively, we could have set up a swarm from the command line first, and installed UCP on top of this if we preferred; UCP would have automatically recognized and integrated all nodes.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

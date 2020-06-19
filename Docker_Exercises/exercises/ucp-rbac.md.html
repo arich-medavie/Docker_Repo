@@ -1,0 +1,101 @@
+<html>
+<head>
+    <title>ucp-rbac.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="instructor-demo-ucp-rbac">Instructor Demo: UCP RBAC</h1>
+<p>In this demo, we&#39;ll illustrate:</p>
+<ul>
+<li>Constructing Swarm resource collections and Kubernetes namespaces through UCP</li>
+<li>Constructing users, teams and organizations in UCP</li>
+<li>Granting permissions to users through permission grants and role bindings</li>
+</ul>
+<h2 id="part-1-basic-swarm-rbac">Part 1: Basic Swarm RBAC</h2>
+<ol>
+<li><p>Start by creating a user named Moby: navigate <strong>Access Control -&gt; Users -&gt; Create</strong>, and fill out the form. Note usernames must be all lowercase, and passwords must be at least 8 characters long.</p>
+</li>
+<li><p>Create a resource collection <code>Collections/Swarm/Shared/bigstore</code>: navigate <strong>Shared Resources -&gt; Collections -&gt; View Children</strong>, then <strong>View Children</strong> again beside &#39;Shared&#39;, and click <strong>Create Collection</strong>. Name the resource collection <em>bigstore</em>.</p>
+</li>
+<li><p>Create a grant giving Moby the <em>Full Control</em> role over the bigstore resource collection: navigate <strong>Access Control -&gt; Grants -&gt; Swarm -&gt; Create Grant</strong>, and fill out the corresponding fields.</p>
+</li>
+<li><p>Log in to UCP as Moby, and create a service in the bigstore resource collection; it proceeds as you&#39;d expect, since Moby has full control over this resource collection. Try and create another in the <em>Shared</em> resource collection, and it will fail since Moby has no creation rights there.</p>
+</li>
+</ol>
+<h2 id="part-2-resource-collections-teams-and-organizations">Part 2: Resource Collections, Teams, and Organizations</h2>
+<ol>
+<li><p>Delete Moby&#39;s grant from the last section: log back into UCP as admin, navigate <strong>Access Control -&gt; Grants -&gt; Swarm</strong>, check the checkbox beside Moby&#39;s grant to bigstore, and select <strong>Actions -&gt; Remove</strong>.</p>
+</li>
+<li><p>Create two sub-collections in the bigstore collection: <em>database</em> and <em>payments</em>. Place a service in each.</p>
+</li>
+<li><p>Create an organization <em>engineering</em>, with two teams <em>backend</em> and <em>analytics</em>: navigate <strong>Access Control -&gt; Orgs &amp; Teams -&gt; Create</strong> to create the organization, and <strong>Access Control -&gt; Orgs &amp; Teams -&gt; engineering -&gt; +</strong>, respectively.</p>
+</li>
+<li><p>Add Moby to the backend team, and create a user Abe in the analytics team.</p>
+</li>
+<li><p>Assign full control to the backend team for the database and payments collections; and assign the <em>View Only</em> role to the analytics team for the database.</p>
+</li>
+<li><p>Optional: Draw the current RBAC configuration for the engineering organization and the bigstore collection on the board if possible.</p>
+</li>
+<li><p>Log in to UCP as Moby. Which services can Moby see, and why?</p>
+</li>
+<li><p>Log in to UCP as Abe. Which services can Abe see, and why?</p>
+</li>
+</ol>
+<h2 id="part-3-kubernetes-namespaces-role-bindings">Part 3: Kubernetes Namespaces &amp; Role Bindings</h2>
+<ol>
+<li><p>As admin, create a Kubernetes namespace in UCP by entering the following in the yaml field under <strong>Kubernetes -&gt; Create</strong>:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: myns
+</code></pre>
+</li>
+<li><p>Create a pod in this namespace with the following yaml:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-pod
+  namespace: myns
+spec:
+  containers:
+  - name: demo-nginx
+    image: nginx
+</code></pre>
+</li>
+<li><p>List your pods by navigating <strong>Kubernetes -&gt; Pods</strong>; the <code>demo-nginx</code> pod is nowhere to be found. Navigate <strong>Kubernetes -&gt; Namespaces</strong>, hover over <code>myns</code> and click <strong>Set Context</strong>; the <code>demo-nginx</code> pod will now appear in the Pods tab. UCP filters the Kuberentes resources it displays by namespace, unless you activate the <em>Set Context for all Namespaces</em> toggle on the Namespaces tab.</p>
+</li>
+<li><p>Finally, give the <em>edit</em> ClusterRole to the backend team from above for this namespace, via <strong>Access Control -&gt; Grants -&gt; Kuberentes</strong>.</p>
+</li>
+<li><p>Log into UCP as Moby, and delete this pod; members of the backend team are able to do so, thanks to the ClusterRole you just created.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this demo, we clicked through basic setup of UCP users, teams, organizations, resource collections, namespaces, Swarm grants, and Kubernetes role bindings. Note the similarities between the two RBAC models; they are nearly identical, the possible nesting of Swarm resource collections notwithstanding.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

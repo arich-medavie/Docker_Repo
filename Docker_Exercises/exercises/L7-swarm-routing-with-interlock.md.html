@@ -1,0 +1,423 @@
+<html>
+<head>
+    <title>L7-swarm-routing-with-interlock.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="l7-swarm-routing-with-interlock">L7 Swarm Routing with Interlock</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Set up Interlock as part of a UCP deployment</li>
+<li>Configure Swarm services to accept ingress traffic via hostname header</li>
+<li>Configure cookie-based sticky sessions for services routed at L7 by Interlock</li>
+<li>Configure TLS offloading with ucp-interlock-proxy service</li>
+<li>Configure end to end encryption for services leveraging UCP Interlock for L7 routing</li>
+<li>Deploying stacks that leverages L7 routing offered by Interlock</li>
+</ul>
+<h2 id="enabling-interlock">Enabling Interlock</h2>
+<ol>
+<li><p>From a UCP admin account, navigate <strong>admin -&gt; Admin Settings -&gt; Layer 7 Routing</strong>.</p>
+</li>
+<li><p>Change the default port for <strong>HTTP</strong> to 80, leave the default for <strong>HTTPS</strong> at 8443 for <strong>HTTPS</strong>, and tick the checkbox which says <strong>Enable Layer 7 Routing</strong>.</p>
+</li>
+<li><p>Click <strong>Save</strong>, at the bottom.</p>
+</li>
+<li><p>Click the <strong>X</strong> in the top right to escape from this config page, then navigate <strong>Swarm -&gt; Networks</strong>. There should be a network named <code>ucp-interlock</code>.</p>
+</li>
+<li><p>Navigate <strong>Swarm -&gt; Services</strong> to display all your swarm services. There should be one for <code>Interlock</code>, one for <code>extension</code> and one for <code>proxy</code>:</p>
+<blockquote>
+<p><strong>Note</strong>: If you don&#39;t see these services, click the gear icon (in the service view page) and check <strong>Show system resources</strong>.</p>
+</blockquote>
+<p><img src="../images/screen-display-interlock-services.png" alt="&quot;&quot;">/</p>
+<p>Note the proxy service has two replicas, for high availability.</p>
+</li>
+</ol>
+<h2 id="enabling-hitless-proxy-updates">Enabling Hitless Proxy Updates</h2>
+<p>While not strictly mandatory, Docker recommends enabling the optional hitless proxy update feature; this forwards proxy config updates to a config service, which you can think of as a staging area for these updates; the proxy service will initiate a soft update to the proxy when this happens, minimizing service and connection interruptions.</p>
+<ol>
+<li><p>Dump the default interlock config to a file for editing:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ CONFNAME=$(docker service inspect --format \
+    &#39;{{ (index .Spec.TaskTemplate.ContainerSpec.Configs 0).ConfigName }}&#39; \
+    ucp-interlock)
+
+[centos@ucp-manager-0 ~]$ docker config inspect --format \
+    &#39;{{ printf &quot;%s&quot; .Spec.Data }}&#39; $CONFNAME &gt; config.toml
+</code></pre>
+</li>
+<li><p>Edit the file <code>config.toml</code> to enable hitless updates by adding the <code>HitlessServiceUpdate</code> key. The first few lines of your <code>config.toml</code> should look like this (all there by default except the <code>HitlessServiceUpdate</code> key which you should manually add):</p>
+<pre><code class="lang-toml">ListenAddr = &quot;:8080&quot;
+DockerURL = &quot;unix:///var/run/docker.sock&quot;
+AllowInsecure = false
+PollInterval = &quot;3s&quot;    
+
+[Extensions]
+  [Extensions.default]
+    HitlessServiceUpdate = true
+    Image = &quot;docker/ucp-interlock-extension:3.2.5&quot;
+</code></pre>
+</li>
+<li><p>Update your interlock config:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ NEWCONFNAME=&quot;com.docker.ucp.interlock.conf-$(( \
+    $(cut -d &#39;-&#39; -f 2 &lt;&lt;&lt; &quot;$CONFNAME&quot;) + 1 ))&quot;
+
+[centos@ucp-manager-0 ~]$ docker config create $NEWCONFNAME config.toml
+
+[centos@ucp-manager-0 ~]$ docker service update \
+    --config-rm $CONFNAME \
+    --config-add source=$NEWCONFNAME,target=/config.toml \
+    ucp-interlock
+</code></pre>
+</li>
+<li><p>After a moment, there should be a new Interlock service called <code>ucp-interlock-config</code>; this service will now receive updated configuration files for your nginx proxy, and provide them to nginx as it performs a soft update.</p>
+</li>
+</ol>
+<h2 id="deploying-services-with-interlock">Deploying Services with Interlock</h2>
+<ol>
+<li><p>On <code>ucp-manager-0</code>, create an overlay network for our service:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network create -d overlay demo
+</code></pre>
+</li>
+<li><p>Create and publish a service, making sure to use the two labels <code>com.docker.lb.hosts</code> and <code>com.docker.lb.port</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name demo \
+    --network demo \
+    --label com.docker.lb.hosts=demo.A \
+    --label com.docker.lb.port=8000 \
+    training/whoami:latest
+</code></pre>
+<p>The <code>com.docker.lb.hosts</code> label tells Interlock the value of the <code>Host</code> header that should be routed to this service, and <code>com.docker.lb.port</code> tells the proxy service to which container port to send the request to.</p>
+</li>
+<li><p>Make sure the service is up and running by <code>curl</code>ing it from your <code>infra</code> node, outside your cluster:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ curl -H &quot;Host: demo.A&quot; http://&lt;ucp-manager-0 public IP&gt;
+
+I&#39;m 2c206a3a4741
+</code></pre>
+<p>The request has been routed to the container based on the <code>Host</code> value in the request header.</p>
+</li>
+<li><p>Scale the service to four replicas:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service update --replicas 4 demo
+</code></pre>
+</li>
+<li><p>See that traffic is load balanced across all our new service replicas:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ for N in `seq 1 10`; \
+    do curl -H &quot;Host: demo.A&quot; http://&lt;ucp-manager-0 public IP&gt;; \
+    done;
+</code></pre>
+<p>Which produces something like:</p>
+<pre><code class="lang-bash">I&#39;m 2c206a3a4741
+I&#39;m 2c206a3a4741
+I&#39;m cf659f3e6093
+I&#39;m cf659f3e6093
+I&#39;m 89598836e0d1
+I&#39;m 89598836e0d1
+I&#39;m d83e3b1acea6
+I&#39;m d83e3b1acea6
+I&#39;m 2c206a3a4741
+I&#39;m 2c206a3a4741
+</code></pre>
+<p>As you can see, the instance IDs are being displayed twice before proceeding to the next one. This is because the L7 load balancer round robins across both the replicas of the proxy service, and each of those round robins across the four replicas of the demo service.</p>
+</li>
+<li><p>List Docker&#39;s config files:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker config ls
+
+ID                          NAME                                        ...
+rsmr2wluw42j9y7bqtpjbr7qc   com.docker.interlock.extension.f24ce8       ...
+tzcdlfdlro4bpyqj5dve98gn3   com.docker.interlock.proxy.955595           ...
+qf2zpycobvi3ve07ojpbzs2ap   com.docker.interlock.proxy.ce9f9a           ...
+zd3n46stobvzjvwqeyrr44jj3   com.docker.license-0                        ...
+rqpz7kj20zyxhstq086t0gecq   com.docker.ucp.interlock.conf-1             ...
+ku4cmjk7cfm3i42a87bzzndmx   com.docker.ucp.internal-config.8FSC988...   ...
+</code></pre>
+<p>The ones that look like <code>com.docker.interlock.proxy.*</code> are the nginx configuration files created for the proxy by the extension service.</p>
+</li>
+<li><p>Inspect the <em>most recent</em> config file (note there are two: the newest and the second-newest; we want the newest):</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker config inspect --pretty &lt;newest proxy config ID&gt;
+</code></pre>
+<p>There should be a block that looks similar to:</p>
+<pre><code class="lang-bash">upstream up-demo.local {
+    zone up-demo.local_backend 64k;
+
+    server 10.0.3.39:8000;
+    server 10.0.3.37:8000;
+    server 10.0.3.38:8000;
+    server 10.0.3.31:8000;
+
+}
+</code></pre>
+<p>Those are the task IPs for each of your four service tasks, to which Interlock&#39;s proxy is forwarding traffic. Note that by default, Interlock is sending traffic directly to task IPs; if one of the corresponding containers fails, we rely on Interlock&#39;s core service to update the proxy config by way of the config service. If instead we prefer to rely on IPVS to route to a live container and minimize configuration changes, we can add the <code>com.docker.lb.backend_mode=vip</code> label to a service; in this case, the Interlock proxy will route to the stable service VIP rather than the containers directly.</p>
+</li>
+<li><p>Clean up by removing your <code>demo</code> service.</p>
+</li>
+</ol>
+<h2 id="configuring-sticky-sessions">Configuring Sticky Sessions</h2>
+<p>In case we want a client to always be routed to the same backend container by Interlock, we can configure our service to require <em>sticky sessions</em> as follows.</p>
+<ol>
+<li><p>Create an L7-routed service with cookie-based sticky sessions:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name stickydemo \
+    --network demo \
+    --replicas 4 \
+    --label com.docker.lb.hosts=demo.sticky \
+    --label com.docker.lb.port=8000 \
+    --label com.docker.lb.sticky_session_cookie=session \
+    training/whoami:latest
+</code></pre>
+</li>
+<li><p>Hit your new service a bunch of times from <code>infra</code>, passing in an arbitrary value for the <code>session</code> cookie:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ for N in `seq 1 10`; \
+    do curl -b session=mycookie \
+    -H &quot;Host: demo.sticky&quot; http://&lt;ucp-manager-0 public IP&gt;; \
+    done;
+
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+I&#39;m 1402abfc65c9
+</code></pre>
+<p>The request gets sent to the same backend every time. Change the value of <code>mycookie</code> to a different string and try again a few times, until you see your requests getting routed to a few different backend containers.</p>
+</li>
+<li><p>Clean up by removing your <code>stickydemo</code> service and <code>demo</code> network.</p>
+</li>
+</ol>
+<h2 id="interlock-path-based-routing">Interlock Path-Based Routing</h2>
+<ol>
+<li><p>On <code>ucp-manager-0</code>, create an overlay network for our service:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network create -d overlay demo-net
+</code></pre>
+</li>
+<li><p>Create and publish two services:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create \
+    --name demo-goat \
+    --network demo-net \
+    --label com.docker.lb.port=80 \
+    --label com.docker.lb.hosts=demo.com \
+    --label com.docker.lb.context_root=/current \
+    --label com.docker.lb.context_root_rewrite=true \
+    --env METADATA=&quot;demo-current&quot; \
+    training/petpic:1.0
+
+[centos@ucp-manager-0 ~]$ docker service create \
+    --name demo-cat \
+    --network demo-net \
+    --label com.docker.lb.port=80 \
+    --label com.docker.lb.hosts=demo.com \
+    --label com.docker.lb.context_root=/production \
+    --label com.docker.lb.context_root_rewrite=true \
+    --env METADATA=&quot;demo-production&quot; \
+    training/petpic:2.0
+</code></pre>
+<p>Just like before, the <code>com.docker.lb.hosts</code> label tells Interlock the value of the <code>Host</code> header that should be routed to this service, and <code>com.docker.lb.port</code> tells the proxy service to which container port to send the request to. These services will be routed based on the path indicated in their <code>com.docker.lb.context_root</code> label.</p>
+</li>
+<li><p>Interlock will detect once the service is available and publish it. Once the tasks are running and the proxy service has been updated the application should be available via <code>http://demo.com</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ curl -vs -H &quot;Host: demo.com&quot; \
+    http://&lt;ucp-manager-0 public IP&gt;/current/
+
+[centos@infra ~]$ curl -vs -H &quot;Host: demo.com&quot; \
+    http://&lt;ucp-manager-0 public IP&gt;/production/
+</code></pre>
+<p>Query each route a few times to confirm that the routes specified in the <code>com.docker.lb.context_root</code> label determine which backend service the request is routed to.</p>
+</li>
+<li><p>Clean up:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service rm demo-cat demo-goat
+[centos@ucp-manager-0 ~]$ docker network rm demo-net
+</code></pre>
+</li>
+</ol>
+<h2 id="-optional-secure-services-with-tls">(Optional) Secure Services with TLS</h2>
+<p>At times you might want to secure access to services with TLS. That can be implemented with interlock. Interlock can be used to setup either end to end TLS encryption or to setup TLS offloading. We&#39;ll see how to set both of these patterns up as part of a stack in the following steps.</p>
+<h3 id="offloading-tls-to-interlock">Offloading TLS to Interlock</h3>
+<p>When using interlock for offloading TLS, the incoming traffic will be decrypted by <code>ucp-interlock-proxy</code> and traffic from <code>ucp-interlock-proxy</code> to the application service container will be un-encrypted.</p>
+<p>   <img src="../images/interlock-tls-offloading.png" alt="&quot;&quot;">/</p>
+<ol>
+<li><p>We need to first setup a certificate and key pair which will be used for TLS communication. We will use <code>openssl</code> to do this. On <code>ucp-manager-0</code>, run the following to generate a new key (<code>demo.tls.key</code>) and certificate (<code>demo.tls.cert</code>):</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$  openssl req   -new   -newkey rsa:4096   \
+      -days 3650   -nodes   -x509   \
+      -subj &quot;/C=US/ST=CA/L=SF/O=Docker-Training/CN=demo.tls&quot;   \
+      -keyout demo.tls.key   -out demo.tls.cert
+</code></pre>
+</li>
+<li><p>Let&#39;s manage these credentials as Docker secrets:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker secret create demo.tls.cert ./demo.tls.cert
+[centos@ucp-manager-0 ~]$ docker secret create demo.tls.key ./demo.tls.key
+</code></pre>
+</li>
+<li><p>Once the certificate is generated we can provision it to a swarm service in a stack file <code>offload.yaml</code> on <code>ucp-manager-0</code>:</p>
+<pre><code>version: &quot;3.7&quot;
+
+services:
+  demo:
+    image: training/whoami:latest
+    deploy:
+      replicas: 2
+      labels:
+        com.docker.lb.hosts: demo.tls
+        com.docker.lb.network: tls-demo
+        com.docker.lb.port: 8000
+        com.docker.lb.ssl_cert: demo.tls.cert
+        com.docker.lb.ssl_key: demo.tls.key
+    networks:
+      - tls-demo
+
+networks:
+  tls-demo:
+
+secrets:
+  demo.tls.cert:
+    external: true
+  demo.tls.key:
+    external: true
+</code></pre><p>(This is an example of separating the static, portable part of our application definition from dynamic, environment specific configuration; our compose file captures the architecture of our application applicable to any environment that it runs in, while things like certs and keys which may change from environment to environment are external to the stack and pulled in from the environment at runtime).</p>
+</li>
+<li><p>Deploy your stack: </p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker stack deploy -c offload.yaml interlock-tls
+</code></pre>
+</li>
+<li><p>Access the newly deployed stack via the hostname provided as value for the interlock hostname label <code>demo.tls</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl --resolve demo.tls:8443:&lt;ucp-manager-0-IP&gt; \
+    https://demo.tls:8443
+
+curl: (60) Peer&#39;s certificate issuer has been marked as not trusted by the user.
+More details here: http://curl.haxx.se/docs/sslcerts.html
+
+curl performs SSL certificate verification by default, using a &quot;bundle&quot;
+ of Certificate Authority (CA) public keys (CA certs). If the default
+ bundle file isn&#39;t adequate, you can specify an alternate file
+ using the --cacert option.
+If this HTTPS server uses a certificate signed by a CA represented in
+ the bundle, the certificate verification probably failed due to a
+ problem with the certificate (it might be expired, or the name might
+ not match the domain name in the URL).
+If you&#39;d like to turn off curl&#39;s verification of the certificate, use
+ the -k (or --insecure) option.
+</code></pre>
+<p>The command fails, because you tried to access a HTTPS site whose signing authority is not trusted by your host.</p>
+<p>We can override this error with <code>--insecure</code> option, which tells our HTTPS client (i.e. <code>curl</code>) to trust the certificate presented by the server:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl --insecure \
+    --resolve demo.tls:8443:&lt;ucp-manager-0-IP&gt; https://demo.tls:8443
+
+I&#39;m d6f9f7d719ca
+</code></pre>
+</li>
+<li><p>Let&#39;s take a look at the response header to identify which was the last host which had access to HTTP header. This will help us confirm that the TLS is being offloaded:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -I --insecure \
+    --resolve demo.tls:8443:&lt;ucp-manager-0-IP&gt; https://demo.tls:8443
+
+HTTP/1.1 200 OK
+Server: nginx/1.14.2
+Date: Mon, 28 Oct 2019 14:16:49 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 17
+Connection: keep-alive
+x-request-id: f9c76205ba20d43354d89af9e3e2f5de
+x-proxy-id: a61a1cdebfee
+x-server-info: interlock/v3.0.0 (27b903b2) linux/amd64
+x-upstream-addr: 10.0.3.3:8000
+x-upstream-response-time: 39589.965
+</code></pre>
+<p>Note particularly the <code>x-server-info</code> indicating interlock&#39;s access to the HTTP header.</p>
+</li>
+<li><p>Clean up the stack you have deployed when finished:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker stack rm interlock-tls
+</code></pre>
+</li>
+</ol>
+<h3 id="tls-pass-through-with-interlock">TLS pass-through with Interlock</h3>
+<p>When you use end to end encryption, <code>ucp-interlock-proxy</code> service will simply pass on the encrypted TCP packets to your application containers:</p>
+<p>   <img src="../images/interlock-tls-pass-through.png" alt="&quot;&quot;">/</p>
+<ol>
+<li><p>We&#39;ll use the same key and cert secrets from above, in a new stack. In a file <code>passthrough.yaml</code>:</p>
+<pre><code>version: &quot;3.7&quot;
+
+services:
+  demo:
+    image: training/whoami:https
+    deploy:
+      replicas: 2
+      labels:
+        com.docker.lb.hosts: demo.tls
+        com.docker.lb.network: tls-demo
+        com.docker.lb.port: 8000
+        com.docker.lb.ssl_passthrough: &quot;true&quot;
+    secrets:
+      - source: demo.tls.cert
+        target: server.cert
+      - source: demo.tls.key
+        target: server.key
+    networks:
+      - tls-demo
+
+networks:
+  tls-demo:
+
+secrets:
+  demo.tls.cert:
+    external: true
+  demo.tls.key:
+    external: true
+</code></pre><p>As you might have already noticed, in this example we have mouted the secrets <code>demo.tls.cert</code> and <code>demo.tls.key</code> to the service itself. </p>
+</li>
+<li><p>Deploy your stack:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker stack deploy -c passthrough.yaml interlock-tls
+</code></pre>
+</li>
+<li><p>Once you are done, you can try to access the newly deployed stack via the hostname provided as value for interlock host label <code>demo.tls</code>.</p>
+<p>You will see an output like before</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl --insecure \
+    --resolve demo.tls:8443:&lt;ucp-manager-0 IP&gt; https://demo.tls:8443
+I&#39;m 79b68f5652b2
+
+[centos@ucp-manager-0 ~]$ curl --insecure \
+    --resolve demo.tls:8443:&lt;ucp-manager-0 IP&gt; https://demo.tls:8443
+I&#39;m b8167bed6e72
+</code></pre>
+</li>
+<li><p>Let&#39;s take a look at the response header to confirm that the TLS is end to end and the packets are not decrypted by <code>ucp-interlock-proxy</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -I --insecure \
+    --resolve demo.tls:8443:&lt;ucp-manager-0-IP&gt; https://demo.tls:8443
+
+HTTP/1.1 200 OK
+Date: Mon, 28 Oct 2019 14:19:21 GMT
+Content-Length: 17
+Content-Type: text/plain; charset=utf-8
+</code></pre>
+<p>Custom interlock headers are not present this time, since interlock passed the packets through without uencrypting them.</p>
+</li>
+<li><p>Cleanup the stack you have deployed</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker stack rm interlock-tls
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we set up Interlock in UCP, and used it to route external requests to a service based on the <code>Host</code> header found therein, either in round robin fashion for stateless services, or with cookie-based sticky sessions for stateful services. We also saw how L7 routing can be used for securing communication from clients to your service. While similar results can technically be achieved with L4 routing, this would require a separate configuration in an external load balancer for each service expecting ingress traffic at L4. L7 and Interlock make it possible to configure just one point of ingress in your external load balancer that passes traffic onto Interlock, which then handles routing the traffic to its destination.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

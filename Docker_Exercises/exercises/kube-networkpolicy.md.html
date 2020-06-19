@@ -1,0 +1,172 @@
+<html>
+<head>
+    <title>kube-networkpolicy.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="kubernetes-networkpolicy">Kubernetes NetworkPolicy</h1>
+<p>Another operational configuration to enhance the security of our container platforms is network isolation; a container should only ever be allowed to communicate with other containers that it has explicit permission to communicate with. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure a Kubernetes NetworkPolicy to segment traffic between pods.</li>
+</ul>
+<h2 id="configuring-a-kubernetes-networkpolicy">Configuring a Kubernetes NetworkPolicy</h2>
+<ol>
+<li><p>Start by creating a simple Kubernetes application consisting of a database and an API:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: pg
+  namespace: default
+  labels:
+    tier: backend
+spec:
+  containers:
+  - name: pg
+    image: training/db-demo:0.1
+    env:
+    - name: POSTGRES_PASSWORD
+      value: &quot;12345678&quot;
+    - name: POSTGRES_USER
+      value: &quot;moby&quot;
+    - name: POSTGRES_DB
+      value: &quot;mydb&quot;
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api
+  namespace: default
+  labels:
+    tier: api
+spec:
+  containers:
+  - name: api
+    image: training/api-demo:0.1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-access
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+      tier: api
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 33333
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: default
+spec:
+  selector:
+    tier: backend
+  ports:
+  - port: 5432
+</code></pre>
+<p>Once the pods are created, visit <code>&lt;public UCP IP&gt;:33333/demo/price?name=sprocket</code> to make sure your API is working; you should get a JSON post with the price of a sprocket.</p>
+</li>
+<li><p>Next, create another pod and service, this time an instance of a database administration tool:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: probe
+  namespace: default
+  labels:
+    tier: web
+spec:
+  containers:
+  - name: probe
+    image: adminer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: probe-access
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+      tier: web
+  ports:
+  - port: 8081
+    targetPort: 8080
+    nodePort: 33334
+</code></pre>
+<p>Visit your admin tool at <code>&lt;public UCP IP&gt;:33334</code>, and fill in the login form:</p>
+<ul>
+<li><em>System</em>: PostgreSQL</li>
+<li><em>Server</em>: db</li>
+<li><em>Username</em>: moby</li>
+<li><em>Password</em>: 12345678</li>
+<li><em>Database</em>: mydb</li>
+</ul>
+<p>And click <strong>Login</strong>; this container now has full admin rights on your database. Feel free to explore, then click <strong>Logout</strong> in the top right.</p>
+</li>
+<li><p>We typically do not want to allow any arbitrary web frontend to connect to any arbitrary database in our cluster; we can ensure that only the right components can communicate by imposing a <em>NetworkPolicy</em>. Create one via the following yaml:</p>
+<pre><code class="lang-yaml">apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      tier: backend
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: api
+</code></pre>
+<p>This NetworkPolicy matches any pod with the label <code>tier: backend</code> (so in our example, that&#39;s our database pod). The policy forbids all ingress traffic to this pod, except that explicitly allowed, in this case from pods with a label that matches <code>tier: api</code>.</p>
+</li>
+<li><p>Try hitting your API again (change <code>sprocket</code> to <code>widget</code> if you like); everything should work normally.</p>
+</li>
+<li><p>Try logging into your database through your admin portal again; the login will fail, as the connection is blocked by the NetworkPolicy. Pods without the correct labels are forbidden from communicating with our database, mitigating the risk that a compromised container could access our data through the database pod&#39;s clusterIP service.</p>
+</li>
+<li><p>From <code>infra</code>, clean up everything you created in this exercise:</p>
+<pre><code class="lang-bash">kubectl delete pod pg
+kubectl delete pod api
+kubectl delete pod probe
+kubectl delete service db
+kubectl delete service api-access
+kubectl delete service probe-access
+kubectl delete networkpolicy test-policy
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>While Docker&#39;s networking model supports the idea of software defined networks which are firewalled from each other by default, Kube&#39;s networking model defaults to a flat, open network; in order to firewall pods from each other, we must define NetworkPolicies like the one we saw above.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

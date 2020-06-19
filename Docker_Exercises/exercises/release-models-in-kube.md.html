@@ -1,0 +1,185 @@
+<html>
+<head>
+    <title>release-models-in-kube.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="release-models-in-kubernetes">Release Models in Kubernetes</h1>
+<p>Unlike Swarm, Kuberenetes&#39; <em>label selectors</em> and separation between service and deployment objects give us a built in mechanism to switch and load balance routing to our pods that does not rely on an external load balancer. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure Kubernetes label selectors for canary and blue / green releases of deployments.</li>
+</ul>
+<h2 id="blue-green-releases">Blue / Green Releases</h2>
+<ol>
+<li><p>Create &#39;blue&#39; and &#39;green&#39; deployments based on <code>training/petpic:1.0</code> and <code>:2.0</code> using the following yaml:</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: green
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: green
+  template:
+    metadata:
+      labels:
+        app: green
+    spec:
+      containers:
+      - name: green
+        image: training/petpic:1.0
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: blue
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blue
+  template:
+    metadata:
+      labels:
+        app: blue
+    spec:
+      containers:
+      - name: blue
+        image: training/petpic:2.0
+        ports:
+        - containerPort: 80
+</code></pre>
+</li>
+<li><p>Create a <code>NodePort</code> service that points to the &#39;green&#39; deployment:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Service
+metadata:
+  name: bluegreen
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+      app: green
+  ports:
+  - port: 8080
+    targetPort: 80
+</code></pre>
+<p>Note the <code>selector: app: green</code> section; this service is pointing exclusively at pods with the <code>app: green</code> label.</p>
+</li>
+<li><p>Find the public port selected by your <code>NodePort</code> service, and visit your &#39;green&#39; deployment at <code>&lt;ucp-manager-0 public IP&gt;:&lt;NodePort&gt;</code>. You should see the goats of version 1.0 of your app.</p>
+</li>
+<li><p>Now let&#39;s flip the routing to our &#39;blue&#39; deployment. In UCP, navigate <strong>Kubernetes -&gt; Services -&gt; bluegreen</strong>, and click the gear in the top-right to edit this <code>NodePort</code>&#39;s definition.</p>
+</li>
+<li><p>In the yaml presented, change <code>selector: app: green</code> to <code>app: blue</code>, and click <strong>Save</strong>.</p>
+</li>
+<li><p>Refresh your browser at <code>&lt;ucp-manager-0 public IP&gt;:&lt;NodePort&gt;</code>. The <code>NodePort</code> serivce now label-matches the &#39;blue&#39; pods, and directs traffic there. (If the new version doesn&#39;t appear, try clearing your browser cache or using a private or &#39;incognito&#39; historyless browser, or <code>curl</code>ing from the command line instead).</p>
+</li>
+<li><p>Remove your &#39;blue&#39; and &#39;green&#39; deployments and your &#39;bluegreen&#39; service to clean up.</p>
+</li>
+</ol>
+<h2 id="canary-releases">Canary Releases</h2>
+<ol>
+<li><p>Create &#39;production&#39; and &#39;canary&#39; deployments similar to the &#39;blue&#39; and &#39;green&#39; deployments above:</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: production
+  namespace: default
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: petpic
+      stream: stable
+  template:
+    metadata:
+      labels:
+        app: petpic
+        stream: stable
+    spec:
+      containers:
+      - name: production
+        image: training/petpic:1.0
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: canary
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: petpic
+      stream: canary
+  template:
+    metadata:
+      labels:
+        app: petpic
+        stream: canary
+    spec:
+      containers:
+      - name: petpic
+        image: training/petpic:2.0
+        ports:
+        - containerPort: 80
+</code></pre>
+<p>Note how we&#39;ve given our &#39;canary&#39; deployment the same label <code>app: petpic</code> as our main &#39;production&#39; deployment; this way, when we point a service at this label, the service will match and route to both &#39;production&#39; and &#39;canary&#39; pods. We&#39;ve also added in an optional <code>stream</code> label - this is not actually necessary to make this example work, but it is a best practice which will let us tell &#39;production&#39; and &#39;canary&#39; pods apart by label if we need to for more sophisticated environments.</p>
+</li>
+<li><p>Create a <code>NodePort</code> service that matches the <code>app: petpic</code> label:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Service
+metadata:
+  name: canaryservice
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+      app: petpic
+  ports:
+  - port: 8080
+    targetPort: 80
+</code></pre>
+</li>
+<li><p>Find the <code>NodePort</code> port for your &#39;canaryservice&#39; serivce, and <code>curl</code> it at <code>&lt;ucp-manager-0 public IP&gt;:&lt;NodePort&gt;</code>; you should see the HTML for either your &#39;production&#39; or &#39;canary&#39; deployments. Keep <code>curl</code>ing a bunch of times; the <code>NodePort</code> service will randomly spread your traffic across all the pods its label selector matches, which in this case should be the four &#39;production&#39; pods and the one &#39;canary&#39; pod (remember, it&#39;s <em>random</em> load balancing in this case, unlike the nginx defaults; you may have to <code>curl</code> more than 5 times to hit your canary).</p>
+</li>
+<li><p>Clean up by removing your &#39;production&#39; and &#39;canary&#39; deployments, and your &#39;canaryservice&#39; service.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you set up blue / green and canary releases for Kubernetes deployments using label selection and kube services. In these examples we used NodePort services for convenience&#39;s sake, but the exact same pattern can be applied to ClusterIP services for doing blue / green and canary releases <em>internal</em> to your cluster in a way that was difficult to achieve on Swarm. The separation of services from pods and the flexibility of label selectors gives Kubernetes routing an extra degree of freedom that the rigid relationship between Swarm VIPs and tasks can&#39;t easily emulate.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

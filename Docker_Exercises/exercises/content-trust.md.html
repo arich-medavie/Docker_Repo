@@ -1,0 +1,369 @@
+<html>
+<head>
+    <title>content-trust.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="content-trust">Content Trust</h1>
+<p>A key responsibility of an operations team is to ensure only approved software makes it into production. In this exercise, you&#39;ll learn how to use Docker Content Trust to allow users to sign Docker images, and how to set UCP to only run images with a valid set of signatures.</p>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Set up content trust keys using <code>docker trust</code> commands</li>
+<li>Generate content trust metadata for a repository and tag in DTR</li>
+<li>Determine which tags in a repository have trust metadata</li>
+<li>Grant and revoke signing authority for a DTR repository to a DTR user</li>
+<li>Revoke content trust metadata</li>
+<li>Enforce content trust signatures on all running containers in UCP</li>
+<li>Enforce trust pinning on images pulled and run by an individual Docker engine</li>
+</ul>
+<p>As always, make sure you complete each step successfully before moving onto the next, and ask for help if something is unclear. This is especially important with an enforcement mechanism like content trust; it will fail <em>on purpose</em> if anything looks amiss.</p>
+<h2 id="setup">Setup</h2>
+<p>Before we begin establishing content trust, set up a few resources in DTR:</p>
+<ul>
+<li>Create an organization called <em>demo</em> (if you already have such an organization, go ahead and use that one)</li>
+<li>Add a team <em>QA</em> to the <em>demo</em> organization</li>
+<li>Create a user <em>abe</em>, and add them to the <em>QA</em> team</li>
+<li>Add a repository <em>example</em> to the <em>demo</em> organization</li>
+<li>Give the <em>QA</em> team write access to the <em>example</em> repository</li>
+</ul>
+<h2 id="establishing-trust">Establishing Trust</h2>
+<p>When we first begin signing images for a given repository, a few keys need to be generated and initial trust metadata established; in this section, we&#39;ll get started by setting a DTR administrator up to sign trust metadata for a single repository.</p>
+<ol>
+<li><p>On <code>ucp-node-0</code>, pull, tag, and push an image to your new repository exactly as you did in previous exercises:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker image pull alpine:latest
+[centos@ucp-node-0 ~]$ DTR_FQDN=&lt;Public DNS where you are reaching DTR&gt;
+[centos@ucp-node-0 ~]$ docker image tag \
+    alpine:latest ${DTR_FQDN}:4443/demo/example:untrusted
+[centos@ucp-node-0 ~]$ docker login ${DTR_FQDN}:4443 -u admin
+[centos@ucp-node-0 ~]$ docker image push ${DTR_FQDN}:4443/demo/example:untrusted
+</code></pre>
+<p>Check the DTR web frontend to make sure your <code>:untrusted</code> tag is present.</p>
+</li>
+<li><p>Next we&#39;ll set up the <code>admin</code> user&#39;s trust keys and sign and push trust metadata for a new tag in this repository. Start by making a new tag:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker image tag \
+    alpine:latest ${DTR_FQDN}:4443/demo/example:trusted
+</code></pre>
+<p>Now sign and push this image using the <code>docker trust</code> CLI. You&#39;ll be asked to generate a number of passwords; keep track of these and what keys they belong to:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker trust sign ${DTR_FQDN}:4443/demo/example:trusted
+
+You are about to create a new root signing key passphrase. This passphrase
+will be used to protect the most sensitive key in your signing system. Please
+choose a long, complex passphrase and be careful to keep the password and the
+key file itself secure and backed up. It is highly recommended that you use a
+password manager to generate the passphrase and keep it safe. There will be no
+way to recover this key. You can find the key in your config directory.
+Enter passphrase for new root key with ID 2f602d2: 
+Repeat passphrase for new root key with ID 2f602d2: 
+Enter passphrase for new repository key with ID dad1fba: 
+Repeat passphrase for new repository key with ID dad1fba: 
+Enter passphrase for new admin key with ID 00729ba: 
+Repeat passphrase for new admin key with ID 00729ba: 
+Created signer: admin
+Finished initializing signed repository for 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trusted
+Signing and pushing trust data for local image 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trusted, 
+    may overwrite remote trust data
+The push refers to repository 
+    [ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example]
+73046094a9b8: Layer already exists 
+trusted: digest: sha256:0873c92... size: 528
+Signing and pushing trust metadata
+Enter passphrase for admin key with ID 00729ba: 
+Successfully signed 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trusted
+</code></pre>
+<p><strong>Keep track of the root key ID</strong> (<code>2f602d2</code> in the above example); we&#39;ll need it for another step at the end of this exercise.</p>
+<p>At this point, you have generated the root content trust key, a repository key for <code>${DTR_FQDN}:4443/demo/example:trusted</code>, and a signing key for the <code>admin</code> user; all of these keys are stored under <code>/home/centos/.docker/trust/private</code>. Check your DTR web frontend; you should see your <code>:trusted</code> tag with a &#39;Signed&#39; badge, indicating it carries a content trust signature:</p>
+<p><img src="../images/screen-signed-badge.png" alt="">/</p>
+</li>
+<li><p>On <code>ucp-node-1</code>, set Docker into content trust enforcing mode:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ export DOCKER_CONTENT_TRUST=1
+</code></pre>
+<p>Login as user Abe, and attempt to pull the <code>:untrusted</code> tag:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ DTR_FQDN=&lt;Public DNS where you are reaching DTR&gt;
+[centos@ucp-node-1 ~]$ docker login ${DTR_FQDN}:4443 -u abe
+[centos@ucp-node-1 ~]$ docker image pull ${DTR_FQDN}:4443/demo/example:untrusted
+
+No valid trust data for untrusted
+</code></pre>
+<p>Docker refuses to pull images without valid content trust metadata when content trust is being enforced.</p>
+</li>
+<li><p>Determine which tags in the <code>demo/example</code> repository have trust metadata by looking at the <code>SignedTags</code> list in the output of <code>docker trust inspect</code> for this repository:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ docker trust inspect ${DTR_FQDN}:4443/demo/example
+[
+    {
+        &quot;Name&quot;: &quot;ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example&quot;,
+        &quot;SignedTags&quot;: [
+            {
+                &quot;SignedTag&quot;: &quot;trusted&quot;,
+                &quot;Digest&quot;: &quot;0873c92...&quot;,
+                &quot;Signers&quot;: [
+                    &quot;admin&quot;
+                ]
+            }
+        ],
+...
+</code></pre>
+<p>From the <code>SignedTags</code> list, we can see the only tag with a signature is <code>:trusted</code>. Pull this tag:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ docker image pull ${DTR_FQDN}:4443/demo/example:trusted
+
+Pull (1 of 1): 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/
+    demo/example:trusted@sha256:0873c92...
+sha256:0873c92...: Pulling from demo/example
+8e3ba11ec2a2: Already exists 
+Digest: sha256:0873c92...
+Status: Downloaded newer image for 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/
+    demo/example@sha256:0873c92...
+Tagging ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example@sha256:0873c92... 
+    as ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trusted
+</code></pre>
+<p>Notice that the image is actually getting pulled by sha256 - the sha256 that was listed in the <code>Digest</code> key of the <code>SignedTags</code> block above. Only after the pull completes is the image re-tagged as <code>${DTR_FQDN}:4443/demo/example:trusted</code>.</p>
+</li>
+</ol>
+<h2 id="granting-signing-authority">Granting Signing Authority</h2>
+<p>We will often want to allow a number of different users to sign images as trusted. In this section, we&#39;ll grant signing authority to user Abe for our <code>demo/example</code> repository.</p>
+<ol>
+<li><p>Look at the output of <code>docker trust inspect</code> above. Under the <code>Signers</code> list, you can see the only DTR user with current signing authority for this repository is user admin.</p>
+</li>
+<li><p>In order to grant signing authority, we&#39;ll need access to Abe&#39;s client bundle. Fetch it on <code>ucp-node-0</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ UCP_FQDN=&lt;Public DNS UCP is reachable at&gt;
+[centos@ucp-node-0 ~]$ AUTHTOKEN=$(curl -sk \
+    -d &#39;{&quot;username&quot;:&quot;abe&quot;,&quot;password&quot;:&quot;&lt;abe&#39;s password&gt;&quot;}&#39; \
+    https://${UCP_FQDN}/auth/login | jq -r .auth_token)
+[centos@ucp-node-0 ~]$ alias ucp-api=&#39;curl -k -H &quot;Authorization: Bearer $AUTHTOKEN&quot;&#39;
+[centos@ucp-node-0 ~]$ ucp-api https://${UCP_FQDN}/api/clientbundle -o bundle.zip
+[centos@ucp-node-0 ~]$ unzip bundle.zip ; ls
+
+bundle.zip  ca.pem  cert.pem  cert.pub  env.cmd  env.ps1  env.sh  key.pem  
+kube.yml  meta.json  tls
+</code></pre>
+<p>The administrator needs that <code>cert.pem</code> public key certificate in order to grant Abe signing access.</p>
+</li>
+<li><p>Establish Abe as a signer for the <code>demo/example</code> repository. Updating signing authority for a repository requires the password for the repository key you generated above:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker trust signer \
+    add --key cert.pem abe ${DTR_FQDN}:4443/demo/example
+
+Adding signer &quot;abe&quot; to ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example...
+Enter passphrase for repository key with ID dad1fba: 
+Successfully added signer: abe to 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example
+</code></pre>
+</li>
+<li><p>Re-list the trust metadata summary for this repository, and look for the <code>Signers</code> list in the output:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker trust inspect ${DTR_FQDN}:4443/demo/example
+
+...
+        &quot;Signers&quot;: [
+            {
+                &quot;Name&quot;: &quot;admin&quot;,
+                &quot;Keys&quot;: [
+                    {
+                        &quot;ID&quot;: &quot;00729ba...&quot;
+                    }
+                ]
+            },
+            {
+                &quot;Name&quot;: &quot;abe&quot;,
+                &quot;Keys&quot;: [
+                    {
+                        &quot;ID&quot;: &quot;523c230...&quot;
+                    }
+                ]
+            }
+        ],
+...
+</code></pre>
+<p>We can see that Abe has been added to the <code>Signers</code> list.</p>
+</li>
+<li><p>Copy Abe&#39;s <code>key.pem</code> from <code>ucp-node-0</code> to <code>ucp-node-1</code>.</p>
+<p>(At this point, Abe is allowed to sign images using the private key that corresponds to the public certificate we registered as a valid signer in the last step. In order to actually sign images, Abe needs to load his private key found in <code>key.pem</code> in his client bundle into Docker on the machine they&#39;re signing and pushing from; we&#39;ll pretend Abe is working from <code>ucp-node-1</code>, which is why we need to copy his key over there).</p>
+</li>
+<li><p>Load the private key found in Abe&#39;s <code>key.pem</code> into Docker&#39;s trust infrastructure:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ sudo chmod 400 key.pem 
+[centos@ucp-node-1 ~]$ docker trust key load key.pem
+
+Loading key from &quot;key.pem&quot;...
+Enter passphrase for new signer key with ID 523c230: 
+Repeat passphrase for new signer key with ID 523c230: 
+Successfully imported key from key.pem
+</code></pre>
+<p>Here Abe establishes a password for their signing key (<code>523c230</code> in my example) - note this matches the key identity shown for Abe in the output of <code>docker trust inspect</code> above.</p>
+</li>
+<li><p>Make sure you are logged in as Abe by running <code>docker login ${DTR_FQDN}:4443</code> on <code>ucp-node-1</code> again.</p>
+</li>
+<li><p>Tag, sign and push an image as Abe:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ docker image pull centos:7
+[centos@ucp-node-1 ~]$ docker image tag \
+    centos:7 ${DTR_FQDN}:4443/demo/example:trust-centos
+[centos@ucp-node-1 ~]$ docker trust sign ${DTR_FQDN}:4443/demo/example:trust-centos
+
+Signing and pushing trust data for local image 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trust-centos, 
+    may overwrite remote trust data
+The push refers to repository 
+    [ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example]
+1d31b5806ba4: Pushed 
+trust-centos: digest: 
+    sha256:fc2476ccae2a5186313f2d1dadb4a969d6d2d4c6b23fa98b6c7b0a1faad67685 size: 529
+Signing and pushing trust metadata
+Enter passphrase for signer key with ID 523c230: 
+Successfully signed 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trust-centos
+</code></pre>
+<p>Just like before, you&#39;ll be asked for Abe&#39;s signing password at the end of the push, and you should be able to see the &#39;Signed&#39; badge beside the <code>:trust-centos</code> tag in the DTR web frontend.</p>
+</li>
+<li><p>Back on <code>ucp-node-0</code>, inspect the content trust metadata for the <code>demo/example</code> repo one more time:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker trust inspect ${DTR_FQDN}:4443/demo/example
+</code></pre>
+<p>The output is similar to before, but now indicates that <code>:trust-centos</code> is a trusted tag that can be pulled with content trust enforced. Abe has successfully signed an image as trusted.</p>
+</li>
+</ol>
+<h2 id="requiring-trust-at-runtime">Requiring Trust at Runtime</h2>
+<p>UCP can be set to enforce valid content trust for all containers at runtime, without which deployment will fail, as follows:</p>
+<ol>
+<li><p>In the UCP web frontend as an administrator, navigate <strong>admin -&gt; Admin Settings -&gt; Docker Content Trust</strong>, and click the <strong>Run only signed images</strong> checkbox.</p>
+</li>
+<li><p>Next click <strong>Add Team +</strong>, and require a signature from someone in the QA team of the demo organization:</p>
+<p><img src="../images/screen-enforce-content-trust.png" alt="">/</p>
+<p>Don&#39;t forget to hit <strong>Save</strong> at the bottom when done. We&#39;ll just require the one signature in this example, but note you can keep adding more signature requirements, which will be AND&#39;ed together, allowing you to demand a signature from every person who needs to sign off on an image before it goes into production.</p>
+</li>
+<li><p>Create a swarm service in UCP using the <code>${DTR_FQDN}:4443/demo/example:trust-centos</code> image; set the command to <code>ping 8.8.8.8</code>. This should work exactly as before.</p>
+</li>
+<li><p>Create another swarm service in UCP using the <code>${DTR_FQDN}:4443/demo/example:untrusted</code> image; this will fail with an error message <strong>&#39;image did not meet required signing policy&#39;</strong></p>
+</li>
+<li><p>Try doing the previous step again, with the <code>:trusted</code> tag. This still fails in the same way - even though the <code>:trusted</code> tag has signed metadata from the admin user, this still isn&#39;t good enough. The trust policy you created above requires a member of the QA team to sign off.</p>
+</li>
+<li><p>Delete the service you created.</p>
+</li>
+</ol>
+<h2 id="revoking-trust-metadata">Revoking Trust Metadata</h2>
+<p>In the event that a tag should no longer have signed metadata associated with it, trust metadata can be revoked as follows.</p>
+<ol>
+<li><p>Revoke the trust metadata for <code>demo/example:trust-centos</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker trust revoke ${DTR_FQDN}:4443/demo/example:trust-centos
+
+Enter passphrase for admin key with ID 00729ba: 
+Successfully deleted signature for 
+    ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example:trust-centos
+</code></pre>
+<p>Notice this procedure requires authentication from someone with signing authority over this repository.</p>
+</li>
+<li><p>Use <code>docker trust inspect</code> as above to confirm that <code>:trust-centos</code> is no longer a signed tag in the <code>demo/example</code> repository.</p>
+</li>
+</ol>
+<h2 id="revoking-signing-authority">Revoking Signing Authority</h2>
+<p>In the event that a user should no longer have signing authority over a repository, their privileges can be revoked as follows.</p>
+<ol>
+<li><p>Revoke Abe&#39;s signing authority for the <code>${DTR_FQDN}:4443/demo/example</code> repository:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker trust signer remove abe ${DTR_FQDN}:4443/demo/example
+
+Removing signer &quot;abe&quot; from ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example...
+Enter passphrase for repository key with ID dad1fba: 
+Successfully removed abe from ec2-35-173-184-38.compute-1.amazonaws.com:4443/demo/example
+</code></pre>
+<p>Note in this case, the repository key credentials are required.</p>
+</li>
+<li><p>Do <code>docker trust inspect</code> for this repository again. Abe is no longer on the &#39;Signers&#39; list.</p>
+</li>
+</ol>
+<h2 id="optional-enforcing-trust-pinning">Optional: Enforcing Trust Pinning</h2>
+<p>An individual Docker engine can be put into <em>trust pinning</em> mode, which refuses to pull or run images except those with trust metadata signed by a member of a whitelist of root keys.</p>
+<ol>
+<li><p>Remove <code>ucp-node-0</code> from your swarm, and clean up all containers and volumes running there (we can treat this like any remote node trying to interact with our DTR):</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker swarm leave
+[centos@ucp-node-0 ~]$ docker container rm -f $(docker container ls -aq)
+[centos@ucp-node-0 ~]$ docker volume rm $(docker volume ls -q)
+[centos@ucp-node-0 ~]$ unset DOCKER_CONTENT_TRUST
+[centos@ucp-manager-0 ~]$ docker node rm ucp-node-0
+</code></pre>
+</li>
+<li><p>Find the name of your root signing key. You noted down its prefix above when you first did <code>docker trust sign</code> (my example was <code>2f602d2</code>). List the contents of the private key directory on the node you created this private key on (<code>ucp-node-0</code> as above):</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ ls ~/.docker/trust/private/
+
+0eabbe7213fbaf10dbb637221f84aad14365e5d41e011acef9e2e546e4613892.key  
+2f602d205a188b9a1ab3bae1ed5d1964ac494fea950ad8997280dcc08bbb4578.key
+c23ae5df4dd7f4a6a580980090cdf377e81b06fcfdaacba3bab7b7ff019b2e98.key
+</code></pre>
+<p>The <code>.key</code> file that matches the prefix you found earlier is the one you&#39;re looking for; the full string is the name of your root key (<code>2f602d205a188b9a1ab3bae1ed5d1964ac494fea950ad8997280dcc08bbb4578</code> in my example). If you&#39;re unsure, open the file; it&#39;ll say <code>role: root</code> near the top if you&#39;ve picked the right one.</p>
+</li>
+<li><p>Edit your <code>/etc/docker/daemon.json</code> file to look like this, where <code>&lt;root key&gt;</code> is the string you just found (without the <code>.key</code> file extension at the end):</p>
+<pre><code class="lang-json">{
+    &quot;storage-driver&quot;: &quot;overlay2&quot;,
+    &quot;content-trust&quot;: {
+        &quot;trust-pinning&quot;: {
+            &quot;root-keys&quot;: {
+                &quot;&lt;DTR Public DNS&gt;:4443/demo/example&quot;: [&quot;&lt;root key&gt;&quot;]
+            }
+        },
+        &quot;mode&quot;: &quot;enforced&quot;
+    }
+}
+</code></pre>
+<p>Here we&#39;re setting content trust to be <code>enforced</code> by default, and providing a whitelist of repositories and valid root signing keys; only images from whitelisted repositories signed by keys derived from one of the noted root keys will pass content trust.</p>
+</li>
+<li><p>Restart the Docker Engine to load this new config:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ sudo service docker restart
+</code></pre>
+</li>
+<li><p>Now try and pull your <code>:trusted</code> tag from your DTR:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker image pull ${DTR_FQDN}:4443/demo/example:trusted
+
+sha256:xxx: Pulling from demo/example
+Digest: sha256:xxx
+Status: Image is up to date for &lt;DTR&gt;:4443/demo/example:trusted@sha256:xxx
+</code></pre>
+<p>The pull works, since this image was signed using the root key specified.</p>
+</li>
+<li><p>Try pulling the <code>:untrusted</code> tag; the pull fails, much like it did when you were demanding any signature be available with <code>DOCKER_CONTENT_TRUST=1</code>.</p>
+</li>
+<li><p>Now try pulling <code>alpine:latest</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ docker image pull alpine:latest
+
+Error response from daemon: could not validate the path to a trusted root: 
+    invalid trust pinning specified
+</code></pre>
+<p>This time, even pulling this official image will fail. While you were able to pull <code>alpine</code> in generic trust enforcing mode (<code>DOCKER_CONTENT_TRUST=1</code>), trust pinning only accepts signatures from a <em>whitelist</em> of signers. Try setting <code>mode</code> to <code>disabled</code> in <code>/etc/docker/daemon.json</code>, restart the Docker engine, set <code>DOCKER_CONTENT_TRUST=1</code>, and pull alpine again to illustrate the difference between the two trust enforcement modes.</p>
+</li>
+<li><p>Clean up <code>ucp-node-0</code>:</p>
+<ul>
+<li>make sure <code>mode</code> is set to <code>disabled</code> in <code>/etc/docker/daemon.json</code>, then:</li>
+<li><code>sudo service docker restart</code></li>
+<li><code>unset DOCKER_CONTENT_TRUST</code></li>
+<li>Rejoin <code>ucp-node-0</code> to the UCP cluster.</li>
+<li>Turn off content trust enforcement in UCP (<strong>Admin Settings -&gt; Docker Content Trust</strong>)</li>
+</ul>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we stepped through the process of establishing, enforcing, granting and revoking content trust. Content trust enforcement was originally designed around the TUF framework for protecting image downloads from man-in-the-middle attacks, but often finds primary application in even the most secure datacenters as a means of enforcement on what images can be run in UCP. By requiring sign-off from all stakeholders, content trust allows us to automate the enforcement of these governance processes.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

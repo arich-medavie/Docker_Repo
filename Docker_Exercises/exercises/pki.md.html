@@ -1,0 +1,80 @@
+<html>
+<head>
+    <title>pki.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="-optional-pki-authentication">(Optional) PKI Authentication</h1>
+<p>Some companies with high security restrictions do not allow login to critical systems with passwords, and instead require certificate-based login. In this exercise, you&#39;ll set cert-based logins up in UCP.</p>
+<blockquote>
+<p>Note this exercise will require you to be able to add a cert to your browser.</p>
+</blockquote>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Enable PKI authentication</li>
+<li>Utilize a certificate to login to UCP</li>
+</ul>
+<h2 id="creating-a-certificate">Creating a Certificate</h2>
+<ol>
+<li><p>Log into a UCP manager. In <strong>admin -&gt; My Profile -&gt; Client Bundles</strong>, generate a new client bundle and change the label to <code>pki</code> to make it easier to differentiate.</p>
+</li>
+<li><p>With a terminal on your own machine, <code>cd</code> into the directory of your downloaded client bundle and run the following commands to unzip the bundle and to generate the authentication certificate:</p>
+<pre><code class="lang-bash">unzip ucp-bundle-admin.zip -d ucp-bundle-admin
+cd ucp-bundle-admin
+openssl pkcs12 -export -in cert.pem -inkey key.pem -out mycert.pfx 
+</code></pre>
+<p>You can leave the password blank for simplicity.</p>
+</li>
+<li><p>Now, let&#39;s open a new browser - Firefox for this example. Navigate to <strong>Preferences</strong> after clicking the three horizontal lines on the top right.</p>
+</li>
+<li><p>In <strong>Privacy &amp; Security</strong>, scroll down to <strong>Certificates</strong> and click <strong>View Certificates</strong>.</p>
+<p><img src="../images/screen-firefox-settings.png" alt="&quot;&quot;">/</p>
+</li>
+<li><p>In the <strong>Authorities</strong> tab, import your certificate authority (<code>ca.pem</code>). Check the checkboxes asking if you trust this authority.</p>
+</li>
+<li><p>In the <strong>Your Certificates</strong> tab, import the cert you created (<code>mycert.pfx</code>). You will see that the Serial Number resolves to a PKCS #12 format.</p>
+<p><img src="../images/screen-firefox-cert.png" alt="&quot;&quot;">/</p>
+<p>Click <strong>Ok</strong>.</p>
+</li>
+</ol>
+<h2 id="logging-into-ucp">Logging into UCP</h2>
+<ol>
+<li><p>In a new tab, navigate to your UCP instance again. A pop-up like this should show:</p>
+<p><img src="../images/screen-cert-signon.png" alt="&quot;&quot;">/</p>
+<p>After clicking <strong>Ok</strong> and you see your UCP dashboard, that means you have successfully used PKI authentication to sign into UCP.</p>
+</li>
+<li><p>Navigate to <strong>admin</strong> on your UCP dashboard. It should look like this:</p>
+<p><img src="../images/screen-pki-enabled.png" alt="&quot;&quot;">/</p>
+<p>The <strong>Sign Out</strong> button should be absent from the navigation if you logged in with a certificate.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>Government agencies, alongwith financial institutions and big pharmaceuticals, want the capability of signing into UCP and DTR without a password and with a certificate instead for better security. With PKI authentication, all communication is never in the clear: the server verifies the client and the client verifies the server. Typical HTTPS right now is single path verification: you verify the server, but the server doesn&#39;t verify you. In this exercise, you saw PKI authentication in action and effectively implemented it to let you login to UCP with an username and password.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

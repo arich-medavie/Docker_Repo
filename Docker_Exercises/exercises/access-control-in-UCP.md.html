@@ -1,0 +1,188 @@
+<html>
+<head>
+    <title>access-control-in-UCP.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="access-control-in-ucp">Access Control in UCP</h1>
+<p>In this exercise, we&#39;ll describe a simple set of users and assets at a startup called Whalecorp, and create the entities and permissions described in your UCP instance.</p>
+<p>Pre-requisites:</p>
+<ul>
+<li>A working UCP installation with at least two worker nodes, <code>ucp-node-0</code> and <code>ucp-node-1</code></li>
+</ul>
+<h2 id="designing-your-rbac-model">Designing Your RBAC Model</h2>
+<h3 id="planning-teams-organizations">Planning Teams &amp; Organizations</h3>
+<p>For the following steps, sketch out teams and organizations with <em>pen and paper</em>. We&#39;ll click through UCP later, but first we need to come up with an appropriate plan.</p>
+<ol>
+<li><p>Whalecorp has the following members:</p>
+<ul>
+<li><strong>Development</strong>: Joey and Shaun</li>
+<li><strong>QA</strong>: Kelly and Barry</li>
+<li><strong>Operations</strong>: Chloe</li>
+</ul>
+<p>You anticipate that these groups of employees will need different permissions to different groups of resources. Design a UCP organization and team structure for Whalecorp that will accommodate this.</p>
+</li>
+<li><p>Once your sketch is complete, create the corresponding users, teams and organizations in UCP. Remember from the demo, that all these objects are found under <strong>Access Control</strong> in UCP&#39;s right sidebar.</p>
+</li>
+</ol>
+<h3 id="establishing-permissions">Establishing Permissions</h3>
+<p>Now, we&#39;d like to grant our organization and teams permissions to interact with resource collections.</p>
+<ol>
+<li><p>The app that Whalecorp is currently developing has the following characteristics:</p>
+<ul>
+<li>It will be orchestrated on Swarm.</li>
+<li>It requires an overlay network and a secret.</li>
+<li>Development and QA staff will each run their own separate instance, and should not be able to see or affect the other&#39;s.</li>
+<li>Operations staff should be able to access and manipulate both instances with <em>a single grant</em>.</li>
+</ul>
+<p>Get your pen &amp; paper again and sketch some resource collections for these objects, and choose some roles to associate these collections to the teams you defined previously that will enable the access described above.</p>
+</li>
+<li><p>Create the collections you just planned in UCP under <strong>Shared Resources</strong>-&gt;<strong>Collections</strong>-&gt;<strong>View Children</strong>.</p>
+</li>
+<li><p>Create the corresponding UCP grants under <strong>Access Control</strong>-&gt;<strong>Grants</strong>-&gt;<strong>Swarm</strong>.</p>
+</li>
+<li><p>In order to avoid collisions between Development and QA, update your resource collections such that Joey and Shaun can only deploy services to <code>ucp-node-0</code>, and Kelly and Barry can only deploy services to <code>ucp-node-1</code>. Chloe can deploy on either machine.</p>
+</li>
+<li><p>During development, developers (Joey and Shaun) may need to exec into a running container to examine their application in-flight. But, the QA employees shouldn&#39;t be able to exec into a running container, so that secrets aren&#39;t exposed to them. Meanwhile, Chloe should have unrestricted access to all running containers. Change the roles you granted above if necessary to ensure that this is the case.</p>
+</li>
+<li><p>Clean up by deleting the networks and secrets you made above (but leave the users, teams and organizations, resource collections and grants alone).</p>
+</li>
+</ol>
+<h3 id="defining-kubernetes-rbac-rules">Defining Kubernetes RBAC Rules</h3>
+<p>In this part, we want to grant the QA staff read-only access to a namespace called <code>development</code>.</p>
+<ol>
+<li><p>First, we need to create the <code>development</code> namespace.</p>
+<ul>
+<li>In UCP, navigate <strong>Kubernetes -&gt; + Create</strong>.</li>
+<li>Add the following YAML to the text box, and click <strong>Create</strong>:</li>
+</ul>
+<pre><code>apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+</code></pre><ul>
+<li>The new namespace should appear in the list of namespaces.</li>
+</ul>
+</li>
+<li><p>Create a custom Kubernetes Role:</p>
+<ul>
+<li>Navigate to <strong>Access Control</strong>-&gt;<strong>Roles</strong>-&gt;<strong>Create</strong>.</li>
+<li>Select <strong>development</strong> from the Namespace dropdown.</li>
+<li>Add following YAML to the text box:</li>
+</ul>
+<pre><code>kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: read-development
+rules:
+- apiGroups: [&quot;&quot;]
+  resources: [&quot;pods&quot;]
+  verbs: [&quot;get&quot;, &quot;list&quot;, &quot;watch&quot;]
+</code></pre><ul>
+<li>Click <strong>Create</strong>.</li>
+</ul>
+</li>
+<li><p>In order to be able to see something happening within the namespace, we will create a pod.</p>
+<ul>
+<li>Navigate <strong>Kubernetes -&gt; + Create</strong>.</li>
+<li>Add the following YAML to the text box and click <strong>Create</strong>:</li>
+</ul>
+<pre><code>apiVersion: v1
+kind: Pod
+metadata:
+  namespace: development
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.7.9
+    ports:
+    - containerPort: 80
+</code></pre><p>You&#39;ll be redirected to the pods list, where the new pod <code>nginx</code> should be visible.</p>
+<blockquote>
+<p>Note: You might need to set the Kubernetes context in UCP to development: navigate <strong>Kubernetes -&gt; Namespaces</strong>, hover over <em>development</em>, and click <strong>Set Context</strong>.</p>
+</blockquote>
+</li>
+<li><p>In order to grant our QA staff access to the namespace, we need to create a <em>RoleBinding</em>:</p>
+<ul>
+<li>Navigate to <strong>Access Control -&gt; Grants -&gt; Kubernetes -&gt; Create Role Binding</strong>.</li>
+<li>Under <strong>Subject</strong>, click <strong>Organizations</strong>, and from the dropdown menus, select the organization you made in the first part of this exercise, and then select the team in this org you set for the QA staff. Click <strong>Next</strong>.</li>
+<li>Under <strong>Resource Set</strong>, click <strong>Select Namespace</strong> to the right of <strong>development</strong>.</li>
+<li>Under <strong>Role</strong>, click <strong>Cluster Role</strong>, then select <strong>read-development</strong> from the dropdown.</li>
+<li>Click <strong>Create</strong>.</li>
+</ul>
+<p>You will be redirected back to the overview of Kubernetes grants, where your RoleBinding <em>&lt;org name&gt;-&lt;team-name&gt;:read-development</em> should be visible.</p>
+</li>
+<li><p>Now, let&#39;s check whether our pod read permissions are set correctly:</p>
+<ul>
+<li>Login to UCP as one of the members of the QA staff (Kelly or Barry).</li>
+<li>Navigate to <strong>Kubernetes -&gt; Namespaces</strong> and set context to the development namespace like above.</li>
+<li>Navigate to <strong>Kubernetes -&gt; Pods</strong>. At this level, you should be able to see the <strong>nginx</strong> pod you created.</li>
+<li>Hover over the pod&#39;s table row, click the <strong>...</strong> icon on the right, and select <strong>remove</strong>.</li>
+</ul>
+<p>A notification appears saying that the pod cannot be deleted due to denied access, which is the expected behavior, since our QA staff has read-only access to the development namespace.</p>
+</li>
+<li><p>Clean up by logging back into UCP as an admin and deleting your pod.</p>
+</li>
+</ol>
+<h2 id="optional-client-bundles-and-rbac">Optional: Client Bundles and RBAC</h2>
+<ol>
+<li><p>On your <code>infra</code> node, create a Docker context for a non-admin user; to do so, follow the instructions in the &#39;Establishing an Auth Token&#39; and &#39;Setting up a Docker Context from a Client Bundle&#39; sections of the <em>UCP API and Client Bundles</em> exercise you did earlier, but use the credentials for any other user besides <code>admin</code>. Place the bundle in a directory <code>~/userbundle</code>, and call the context <code>ucp-user</code>.</p>
+</li>
+<li><p>Switch to your new context on <code>infra</code> for both Docker and kube, and create a simple service:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use ucp-user
+[centos@infra ~]$ export KUBECONFIG=~/userbundle/kube.yml
+[centos@infra ~]$ docker service create --name rbacdemo nginx
+</code></pre>
+</li>
+<li><p>In UCP, navigate to <strong>Swarm -&gt; Services -&gt; rbacdemo</strong>. What resource collection has this service been placed in, and why? The service was created, but if you completed the above sections it will report an error claiming not to be able to schedule any containers - why?</p>
+</li>
+<li><p>Again from <code>infra</code>, place the following in a file <code>rbacpod.yaml</code>:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: rbacpod
+spec:
+  containers:
+  - name: demo-nginx
+    image: nginx
+</code></pre>
+</li>
+<li><p>Create this pod via <code>kubectl create -f rbacpod.yaml</code>. Does the creation work? If not, why not? Modify your <code>kubectl</code> command, your kube yaml, and / or your UCP RBAC rules to allow the creation to proceed.</p>
+</li>
+<li><p>Clean up by logging back into UCP as an admin and deleting the service and pod you created in this section. Also, switch back to your <code>default</code> context on <code>infra</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use default
+[centos@infra ~]$ unset KUBECONFIG
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>Planning out a role based access control model before touching UCP is a good way to avoid redundancy and difficult-to-manage grant lists. Often, the fewer grants you can make, the better; that way, your list of grants is easy to audit and understand. Leverage the &#39;trickle down&#39; model of RBAC that UCP uses for Swarm governance, when appropriate: grants to organizations apply to all teams and all users in those organization, and grants to parent resource collections apply to child resource collections. This trickle down structure is useful for locking down low- or no-permissions generally, and for granting general permissions to the team leaders or senior staff who need them. For Kubernetes, remember that permissions can be confined to a namespace via a RoleBinding, or granted across namespaces with a ClusterRoleBinding; most Kube permissions for most users should be at the namespace, RoleBinding level to avoid accidentally elevating privileges across the entire cluster.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

@@ -1,0 +1,144 @@
+<html>
+<head>
+    <title>configuring-ucp-for-high-availability.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="-optional-configuring-ucp-for-high-availability">(Optional) Configuring UCP for High Availability</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Add managers to a UCP management consensus to provide high availability for UCP</li>
+<li>Configure a load balancer to distribute traffic across a management consensus</li>
+<li>Prevent workload from getting scheduled on any UCP manager or DTR replica</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li>UCP installed with 2 worker nodes</li>
+<li><p>Two additional nodes running centos:7.5 or later, and Docker Enterprise 19.03.0-ee or later, named:</p>
+<ul>
+<li><code>ucp-manager-1</code></li>
+<li><code>ucp-manager-2</code></li>
+</ul>
+</li>
+</ul>
+<h2 id="checking-ntp">Checking ntp</h2>
+<ol>
+<li><p>Like we did for our other UCP nodes, make sure <code>ntp</code> is running on <code>ucp-manager-1</code> and <code>ucp-manager-2</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-1 ~]$ sudo /bin/systemctl status ntpd.service
+[centos@ucp-manager-2 ~]$ sudo /bin/systemctl status ntpd.service
+</code></pre>
+<p>If it isn&#39;t, <code>sudo /bin/systemctl start ntpd.service</code> should start the serivce.</p>
+</li>
+</ol>
+<h2 id="adding-manager-nodes">Adding manager nodes</h2>
+<ol>
+<li><p>Return to the same UCP page visited previously to get a join token for workers.</p>
+</li>
+<li><p>Move the toggle from <strong>Worker</strong> to <strong>Manager</strong>. Note that the join token changes.</p>
+</li>
+<li><p>Use this new join command from terminals in <code>ucp-manager-1</code> and <code>ucp-manager-2</code> to add these nodes as managers.</p>
+</li>
+<li><p>Go back to the <strong>Nodes</strong> page on UCP. You should now see 5 nodes, similar to the following:</p>
+<p><img src="../images/screen-UCP-5-nodes.png" alt="&quot;&quot;">/</p>
+<blockquote>
+<p><strong>Note:</strong> It takes a few minutes for a node to be set up as a UCP manager. This is reflected in the <strong>Details</strong> column. At first it will say that the node is Pending, and when finished it will say <em>Healthy UCP Manager</em>. Red warning banners at the top of UCP are normal during node configuration, and should resolve themselves once the nodes finish setting up. Be patient! Interrupting the manager join process is a common way to corrupt a cluster.</p>
+</blockquote>
+</li>
+</ol>
+<h2 id="load-balancing-ucp">Load Balancing UCP</h2>
+<p>Now that we have three UCP managers, we&#39;d like to load balance requests to the UCP API and frontend across them. We&#39;ll configure an nginx load balancer on your <code>infra</code> node for this purpose.</p>
+<ol>
+<li><p>First we have to reconfigure UCP&#39;s certificates to accept traffic from our load balancer. On UCP, navigate <strong>Shared Resources -&gt; Nodes -&gt; ucp-manager-0</strong>, then click on the gear icon that appears in the top right to edit this node&#39;s configuration.</p>
+</li>
+<li><p>Scroll down to <em>SANs</em>, click <strong>Add SAN</strong>, and place the public IP of your <code>infra</code> node in the box that appears; do the same with the FQDN for the <code>infra</code> node. Click <strong>Save</strong> in the bottom right. This configures UCP&#39;s certs on this node to accept requests from the <code>infra</code> node.</p>
+</li>
+<li><p>Refresh your browser a few times over the course of the next minute. You may see some warnings or errors from <code>ucp-manager-0</code>; this is normal while certificates are being updated. Once you refresh and your browser asks you to accept a new certificate, the certificate update process for this node is complete.</p>
+</li>
+<li><p>Repeat steps 1-3 for <code>ucp-manager-1</code> and <code>ucp-manager-2</code>.</p>
+</li>
+<li><p>On your <code>infra</code> node, create a file called <code>ucp-nginx.conf</code>, and place the following content in it; make sure to replace the <code>&lt;variables&gt;</code> with the private IPs of your own manager nodes:</p>
+<pre><code>user  nginx;
+worker_processes  1;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+stream {
+    upstream ucp_443 {
+        server &lt;ucp-manager-0 private IP&gt;:443;
+        server &lt;ucp-manager-1 private IP&gt;:443;
+        server &lt;ucp-manager-2 private IP&gt;:443;
+    }
+    upstream ucp_6443 {
+        server &lt;ucp-manager-0 private IP&gt;:6443;
+        server &lt;ucp-manager-1 private IP&gt;:6443;
+        server &lt;ucp-manager-2 private IP&gt;:6443;
+    }
+
+    server {
+    listen 443;
+        proxy_pass ucp_443;
+    }
+    server {
+        listen 6443;
+        proxy_pass ucp_6443;
+    }
+
+}
+</code></pre><p>The 443 block is for the UCP API, and the 6443 block is so <code>kubectl</code> can reach the Kube API directly.</p>
+</li>
+<li><p>Deploy a containerized nginx server, mounting the config you just created:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker container run -d --name ucp-lb --restart=unless-stopped \
+    --publish 443:443 \
+    --publish 6443:6443 \
+    --volume $(pwd)/ucp-nginx.conf:/etc/nginx/nginx.conf:ro \
+    nginx:stable-alpine
+</code></pre>
+</li>
+<li><p>Visit UCP at <code>https://&lt;infra node public IP&gt;</code>. You may be asked to accept several certificates; accept them all, and nginx will forward your traffic onto the UCP management consensus via HTTPS-passthrough round-robin load balancing.</p>
+</li>
+</ol>
+<h2 id="configuring-the-scheduler">Configuring the Scheduler</h2>
+<p>Now that we have 3 manager nodes setup, we want to make sure that our manager nodes are dedicated for their purpose and that they do not run any application containers.</p>
+<ol>
+<li><p>In UCP, navigate <strong>admin -&gt; Admin Settings -&gt; Scheduler</strong>.</p>
+</li>
+<li><p>Uncheck both of the checkbox settings on the page as shown below, and be sure to click <strong>Save</strong> afterwards:</p>
+<p><img src="../images/screen-UCP-admin-scheduler.png" alt="&quot;&quot;">/</p>
+<p>This will prevent containers from being scheduled on any of our UCP manager nodes.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>Your UCP cluster now has three manager nodes, preventing your cluster from collapsing if one of them fails. Bear in mind that this manager consensus is exactly a Swarm manager consensus; UCP controllers are just Swarm managers, with additional containers running on top to serve UCP. We have also made our cluster more stable by preventing workload from being scheduled on UCP managers or DTR replicas; this way, if any poorly engineered or managed containers take down a node, it won&#39;t be one of the managers controlling your cluster. Finally, note that when load balancing a UCP manager consensus, it is <em>mandatory</em> to passthrough HTTPS; do not terminate at the load balancer.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

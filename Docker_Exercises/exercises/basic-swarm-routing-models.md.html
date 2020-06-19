@@ -1,0 +1,199 @@
+<html>
+<head>
+    <title>basic-swarm-routing-models.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="basic-swarm-routing-models">Basic Swarm Routing Models</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Route traffic to a swarm service using the correct tool in each of the following scenarios:<ul>
+<li>Cluster-internal traffic to a stateless service</li>
+<li>Cluster-internal traffic to a stateful service</li>
+<li>Ingress traffic to a stateless service</li>
+<li>Ingress traffic to a stateful service</li>
+</ul>
+</li>
+</ul>
+<h2 id="routing-cluster-internal-traffic">Routing Cluster-Internal Traffic</h2>
+<p>By <em>cluster-internal traffic</em>, we mean traffic from originating from a container running on your swarm, sending a request to another container running on the same swarm. We need to consider two cases: </p>
+<ul>
+<li><strong>Stateless services</strong>: can be load balanced across freely. A containerized API would be a common example.</li>
+<li><strong>Stateful services</strong>: we may need to make explicit and consistent decisions about what container we send a request to. A containerized database using simple local storage is a common example.</li>
+</ul>
+<h3 id="routing-to-stateless-services">Routing to Stateless Services</h3>
+<p>Routing to stateless services internal to a swarm is the simplest form of swarm routing: service discovery will be provided by DNS lookup, and Docker will ensure round-robin load balancing across destination containers. All you must do as an operator is ensure the communicating services are connected to the same overlay network as follows.</p>
+<ol>
+<li><p>On <code>ucp-manager-0</code>, create an overlay network for containers to communicate on:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network create --driver overlay demonet
+</code></pre>
+</li>
+<li><p>Declare a service to route traffic to; call it <code>destination</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name destination \
+    --network demonet \
+    --replicas 3 \
+    training/whoami:latest
+</code></pre>
+</li>
+<li><p>Declare another service we&#39;ll use to send traffic to the first:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name origin \
+    --network demonet \
+    nicolaka/netshoot sleep 1000000
+</code></pre>
+</li>
+<li><p>Use <code>docker service ps origin</code> to find the node that the single replica of your <code>origin</code> service got scheduled on, and connect to that node. I&#39;ll refer to this as <code>node-x</code> below.</p>
+</li>
+<li><p>On <code>node-x</code>, use <code>docker container ls | grep origin</code> to find the container ID of your <code>origin</code> container, and create a bash shell within that container:</p>
+<pre><code class="lang-bash">[centos@node-x ~]$ docker container exec -it &lt;container ID&gt; bash
+</code></pre>
+</li>
+<li><p><code>curl</code> your <code>destination</code> service by name 4 times:</p>
+<pre><code class="lang-bash">bash-4.4# curl destination:8000
+I&#39;m 9b2c603dddea
+bash-4.4# curl destination:8000
+I&#39;m 9465b262a410
+bash-4.4# curl destination:8000
+I&#39;m 15c091a4a796
+bash-4.4# curl destination:8000
+I&#39;m 9b2c603dddea
+</code></pre>
+<p>Docker&#39;s DNS resolves <code>destination</code> to the VIP of the <code>destination</code> service, and round-robin load balances the request across the corresponding containers.</p>
+</li>
+<li><p>Use <code>nslookup</code> to see exactly what <code>destination</code> is resolving to:</p>
+<pre><code class="lang-bash">bash-4.4# nslookup destination
+
+Server:        127.0.0.11
+Address:    127.0.0.11#53
+
+Non-authoritative answer:
+Name:    destination
+Address: 10.0.1.56
+</code></pre>
+<p>That <code>Address: 10.0.1.56</code> is the virtual IP of your <code>destination</code> service. Sending traffic there tells Docker to round-robin load balance it across containers as you saw above.</p>
+</li>
+<li><p>Back on a swarm manager, remove your <code>destination</code> service (we&#39;ll use <code>origin</code> again later, leave it alone):</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service rm destination
+</code></pre>
+</li>
+</ol>
+<h3 id="routing-to-stateful-services">Routing to Stateful Services</h3>
+<p>If our destination service is stateful, the automatic round-robin load balancing provided by VIP resolution above isn&#39;t appropriate; we want to be able to discover the IPs of the containers underlying a service directly, and make our own routing decisions from there.</p>
+<ol>
+<li><p>Create a new <code>destination</code> service, this time in <em>DNSRR mode</em>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name destination \
+    --network demonet \
+    --replicas 3 \
+    --endpoint-mode dnsrr \
+    training/whoami:latest
+</code></pre>
+</li>
+<li><p>Connect to your <code>origin</code> container exactly as you did above. Run <code>nslookup</code> to see what <code>destination</code> resolves to now:</p>
+<pre><code class="lang-bash">bash-4.4# nslookup destination
+
+Server:        127.0.0.11
+Address:    127.0.0.11#53
+
+Non-authoritative answer:
+Name:    destination
+Address: 10.0.1.50
+Name:    destination
+Address: 10.0.1.49
+Name:    destination
+Address: 10.0.1.51
+</code></pre>
+<p>The three IPs at the bottom (<code>10.0.1.[49-51]</code> in my case) are the IPs on <code>demonet</code> of your three <code>destination</code> containers. From here, you can choose which one you&#39;d like to route to; try <code>curl</code>ing one of them a few times with <code>curl &lt;container-IP&gt;:8000</code>, and see that your request always goes to the same <code>destination</code> container.</p>
+</li>
+<li><p>Clean up your services:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service rm origin destination
+</code></pre>
+</li>
+</ol>
+<h2 id="routing-ingress-traffic">Routing Ingress Traffic</h2>
+<p>In the case that we want to allow traffic in to a service from the outside world, we need to route traffic from a port in the host&#39;s network namespace onto a port in the container&#39;s network namespace; both methods below do essentially this, through different means.</p>
+<h3 id="ingress-traffic-to-stateless-services">Ingress Traffic to Stateless Services</h3>
+<p>In the case of stateless services, we want to leverage Docker&#39;s built-in VIP load balancing that we saw in the first section above. To do so, we&#39;ll forward traffic from a port on every host in our swarm to an IP Virtual Server managed by the Docker Engine, which will automatically forward the traffic to the appropriate VIP and service. This is called swarm&#39;s <em>L4 routing mesh</em>.</p>
+<ol>
+<li><p>Re-create your <code>destination</code> service with a cluster-wide port exposure:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name destination \
+    --network demonet \
+    --replicas 3 \
+    -p 8080:8000 \
+    training/whoami:latest
+</code></pre>
+<p>This will make Docker listen on port 8080 of <em>every</em> host in the swarm, and load balance traffic received there to <code>destination</code>&#39;s containers on their internal port 8000.</p>
+</li>
+<li><p>From your <code>infra</code> node (or just your local machine if possible), contact your exposed <code>destination</code> service:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ curl &lt;ucp-manager-0 public IP&gt;:8080
+I&#39;m 01ca0ea0f69f
+[centos@infra ~]$ curl &lt;ucp-manager-0 public IP&gt;:8080
+I&#39;m 358b7633339f
+[centos@infra ~]$ curl &lt;ucp-manager-0 public IP&gt;:8080
+I&#39;m 73c88db127f2
+</code></pre>
+<p>The same round robin load balancing as above, but this time for traffic originating outside your cluster. Try replacing <code>&lt;ucp-manager-0 public IP&gt;</code> with the public IP of a node in your cluster that does <em>not</em> have a <code>destination</code> container running on it; everything will still work, since it&#39;s Docker itself listening on port 8080 on every host in the swarm, not the containers directly. The IPVS will redirect traffic across nodes using the <code>ingress</code> overlay network, regardless of which node the traffic originally arrived on.</p>
+</li>
+<li><p>Remove your <code>destination</code> service as usual.</p>
+</li>
+</ol>
+<h3 id="ingress-traffic-to-stateful-services">Ingress Traffic to Stateful Services</h3>
+<p>Just as with routing traffic originating internally to the swarm, if our target service is stateful, we don&#39;t want Docker to interfere and load balance traffic across containers; we want to make that decision ourselves. We can do so by mapping host ports directly onto container ports, circumventing the IPVS.</p>
+<ol>
+<li><p>Recreate your <code>destination</code> service one last time, this time using <code>--publish mode=host</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name destination \
+    --network demonet \
+    --replicas 3 \
+    --publish mode=host,target=8000 \
+    training/whoami:latest
+</code></pre>
+</li>
+<li><p>Docker will map a random available host port onto port 8000 inside each container started for the <code>destination</code> service. Find one such host port (<code>32768</code> in all cases in this example):</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service ps destination
+... NAME           IMAGE                    NODE           ...  PORTS
+... destination.1  training/whoami:latest   ucp-manager-0  ...  *:32768-&gt;8000/tcp
+... destination.2  training/whoami:latest   ucp-manager-1  ...  *:32768-&gt;8000/tcp
+... destination.3  training/whoami:latest   ucp-manager-2  ...  *:32768-&gt;8000/tcp
+</code></pre>
+</li>
+<li><p>From infra, <code>curl</code> the public IP and port you found above (determine the public IP from the <code>NODE</code> column above), for example:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ curl &lt;node public IP&gt;:32768
+I&#39;m 929a4b4edd03
+[centos@infra ~]$ curl &lt;node public IP&gt;:32768
+I&#39;m 929a4b4edd03
+[centos@infra ~]$ curl &lt;node public IP&gt;:32768
+I&#39;m 929a4b4edd03
+</code></pre>
+<p>The same container ID is returned every time, since (in my case) port 32768 on the swarm node at the public IP I gave is getting forwarded directly to the <code>destination</code> container hosted on that node.</p>
+</li>
+<li><p>Delete your <code>destination</code> service one last time.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you set up basic examples of swarm routing intended for use with stateful and stateless services receiving traffic from inside or outside your swarm. Understanding how traffic is meant to be routed to your services is a key thing to find out from your developers as images move from development into production; ask them for clear answers on whether their containers are stateful or stateless, and whether they expect traffic from inside the swarm or from the external network, and then follow the examples above to successfully configure traffic routing as designed.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

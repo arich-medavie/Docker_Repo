@@ -1,0 +1,88 @@
+<html>
+<head>
+    <title>install-dtr.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="installing-docker-trusted-registry">Installing Docker Trusted Registry</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Install a single replica of Docker Trusted Registry on top of an existing UCP deployment</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li>UCP installed with at least one manager node</li>
+</ul>
+<h2 id="add-additional-worker-nodes-to-ucp">Add additional worker nodes to UCP</h2>
+<p>DTR is installed on top of UCP nodes. In a real deployment, we would add worker nodes dedicated to running DTR, and install DTR there. However for this demo, we&#39;ll just run DTR on the same nodes as our UCP managers, so no extra nodes need to be added at this step. <strong>Do not do this in production!</strong> Always provision dedicated nodes for DTR in a real environment.</p>
+<h2 id="installing-dtr">Installing DTR</h2>
+<ol>
+<li><p>Navigate <strong>admin -&gt; Admin Settings</strong> -&gt; <strong>Scheduler</strong>.</p>
+</li>
+<li><p>Tick the box that says <strong>Allow administrators to deploy containers on UCP managers or nodes running DTR</strong> We need to enable this in order to be able to install DTR on our UCP nodes. Make sure to save this config if necessary.</p>
+</li>
+<li><p>By default, DTR uses ports 80 and 443 on whichever host it&#39;s installed on, but in our case, we&#39;re going to customize this to 81 and 4443 instead, since we&#39;ll be installing DTR on the same nodes as our UCP managers. Make sure nothing is listening on tcp/81 or tcp/4443 before continuing.</p>
+</li>
+<li><p>Switch into <code>ucp-manager-0</code>, and run the following commands. Note that in our case <code>DTR_FQDN</code> is going to be set to the FQDN of <code>ucp-manager-0</code>, since we&#39;re running DTR on the same nodes as UCP managers.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ DTR_FQDN=&lt;ucp-manager-0 FQDN&gt;
+[centos@ucp-manager-0 ~]$ UCP_IP=&lt;ucp-manager-0 public IP&gt;
+[centos@ucp-manager-0 ~]$ docker container run -it --rm docker/dtr:2.7.5 install \
+    --ucp-node ucp-manager-0 \
+    --ucp-username admin \
+    --ucp-password adminadmin \
+    --ucp-url https://${UCP_IP} \
+    --ucp-insecure-tls \
+    --replica-https-port 4443 \
+    --replica-http-port 81 \
+    --dtr-external-url https://${DTR_FQDN}:4443
+</code></pre>
+<p><strong>Note</strong> the <code>--ucp-password</code> flag above; if you changed your admin password when you installed UCP or during the Password Recovery exercise, you&#39;ll need to use that password here instead of <code>adminadmin</code>.</p>
+</li>
+<li><p>Wait for the install to complete, then navigate to <strong>Shared Resources -&gt; Stacks</strong> on the UCP left sidebar. DTR should be listed there, with 9 services.</p>
+</li>
+<li><p>Open a new browser tab and navigate to <code>https://&lt;ucp-manager-0 FQDN&gt;:4443</code>; after accepting another security exception, and logging in with your UCP admin credentials, the DTR dashboard is presented.</p>
+</li>
+</ol>
+<h2 id="-optional-uninstalling-dtr">(Optional) Uninstalling DTR</h2>
+<blockquote>
+<p><strong>STOP</strong>: Only do this if your DTR installation failed and you need to start over!</p>
+</blockquote>
+<p>If we need to uninstall DTR then we can use this command:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker container run -it --rm docker/dtr:2.7.5 destroy \
+    --ucp-username admin \
+    --ucp-password adminadmin \
+    --ucp-url https://${UCP_IP} \
+    --ucp-insecure-tls \
+    --replica-id &lt;replica ID&gt;
+</code></pre>
+<p><strong>Note:</strong> To find out the replica ID we can first run the above command without the <code>--replica-id</code> parameter. The command will suggest a replica to delete; accept it by pressing <code>return</code>.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise we have installed Docker Trusted Registry, which is now running on top of UCP. Note that DTR installation expects ports tcp/443 and tcp/80 to be available by default (4443 and 81 in our example above); if they aren&#39;t, double check whether one of those ports are occupied by a service in UCP (including the HTTP routing mesh, which we set to tcp/80). At this point, we have a minimal viable installation; in the next few exercises, we&#39;ll learn how to set DTR in high availability mode, provide storage backings for images, configure load balancers, and authenticate a remote Docker Engine with our new registry.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

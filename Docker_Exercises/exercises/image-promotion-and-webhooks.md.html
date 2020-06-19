@@ -1,0 +1,127 @@
+<html>
+<head>
+    <title>image-promotion-and-webhooks.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="image-promotion-webhooks">Image Promotion &amp; Webhooks</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Copy images from one repository or registry to another with image promotion and mirroring, respectively</li>
+<li>Fire a webhook at a custom URL in automatic response to an event in DTR</li>
+<li>Audit repository and registry level event logs to reconstruct events taken by DTR, including but not limited to the above.</li>
+</ul>
+<h2 id="creating-a-promotion-pipeline">Creating a Promotion Pipeline</h2>
+<ol>
+<li><p>If you haven&#39;t already, enable security scanning in your DTR deployment by navigating <strong>System -&gt; Security</strong> and then toggle <strong>Enable Scanning</strong> on. Select <strong>Online</strong> for the installation and updates option, and click <strong>Enable Online Syncing</strong> to begin the vulnerability database download. Once this download is complete, you&#39;ll be able to include actions in your pipeline triggered by security scanning events.</p>
+</li>
+<li><p>Create three repositories: <strong><code>admin/whale-dev</code></strong>, <strong><code>admin/whale-qa</code></strong>, and <strong><code>admin/whale-vulnerable</code></strong>.</p>
+</li>
+<li><p>Set the <code>admin/whale-dev</code> repository to scan on push.</p>
+</li>
+<li><p>Navigate <strong>Repositories -&gt; admin/whale-dev -&gt; Promotions -&gt; New Promotion Policy</strong>, and create a policy that promotes images to <code>admin/whale-qa</code> if they have zero critical vulnerabilities. Also make sure the promoted image changes the tag to <code>qa-*</code>, where the asterisk is whatever the original tag of the image was.</p>
+</li>
+<li><p>In the same repository, create another policy that promotes images that <em>do</em> have a critical vulnerability to <code>admin/whale-vulnerable</code>. Retag these images with the original tag, plus the current date.</p>
+</li>
+<li><p>Visit <code>admin/whale-qa</code> and <code>admin/whale-vulnerable</code>&#39;s Promotions tab, and click on <em>Is Target</em>; you should see the policies you just created that push images to each repository.</p>
+</li>
+</ol>
+<h2 id="setting-up-a-webhook">Setting up a Webhook</h2>
+<ol>
+<li><p>On <code>ucp-manager-0</code>, create a service that will catch and display the webhook&#39;s POST payload (in reality, this would be some tooling like a build manager or notification system that needs to take action when the webhook fires, but for the sake of simplicity we&#39;ll just create a service that logs the POST information):</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name whale-webhook \
+    -p 8000:8000 training/whale-server
+</code></pre>
+</li>
+<li><p>Back in DTR, navigate <strong>Repositories -&gt; admin/whale-dev -&gt; Webhooks -&gt; New Webhook</strong>.</p>
+</li>
+<li><p>Choose &#39;Tag Pushed to Repository&#39; for the <em>notification to receive</em>, and provide <code>http://${ucp-manager-0 FQDN}:8000</code> as the webhook URL. Now whenever an image is pushed to this repository, DTR will POST some JSON describing the newly pushed image to the URL you provided.</p>
+</li>
+<li><p>Save this webhook by clicking <strong>Create</strong>.</p>
+</li>
+</ol>
+<h2 id="triggering-the-pipeline">Triggering the Pipeline</h2>
+<ol>
+<li><p>Find an image on Docker Hub that has some critical vulnerabilities, eg <code>ubuntu:16.04</code>. Pull it down, tag it as <code>${DTR_FQDN}:4443/admin/whale-dev:0.1</code>, and push it to DTR. </p>
+</li>
+<li><p>Check the logs of the <code>whale-webhook</code> service:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service logs whale-webhook
+</code></pre>
+<p>You should see the POST request generated by the webhook when it was triggered by pushing to the <code>whale-dev</code> repository.</p>
+</li>
+<li><p>Wait for the image scan on your <code>whale-dev:0.1</code> to complete, and then make sure the promotion to <code>admin/whale-vulnerable</code> worked as expected.</p>
+</li>
+<li><p>Find an image on Docker Hub that has <em>no</em> critical vulnerabilities, eg <code>busybox:latest</code> or <code>alpine:latest</code>, tag it as <code>${DTR_FQDN}:4443/admin/whale-dev:0.2</code>, and push it to DTR. Check that it was promoted as expected after its scan finishes, and look at the logs of <code>whale-webhook</code> once more to see the result of the webhook firing from this push.</p>
+</li>
+</ol>
+<h2 id="auditing-dtr-events">Auditing DTR Events</h2>
+<p>Now that we&#39;ve set DTR up to run a number of automated procedures, we&#39;d like to be able to audit logs of actions taken.</p>
+<ol>
+<li><p>In DTR, navigate to <strong>Repositories -&gt; admin/whale-dev -&gt; Activity</strong>. Here we see a list of all the events taken in this repository, both initiated by users and taken automatically by DTR. Use it to answer the following questions:</p>
+<ul>
+<li>At what time was a &#39;Scan&#39; event initiated for <code>admin/whale-dev:0.1</code>?</li>
+<li>At what time was <code>whale-dev:0.1</code> last promoted?</li>
+<li>Who was the last user to initiate an &#39;Update Tag&#39; event on the <code>admin/whale-dev:0.1</code> tag?</li>
+</ul>
+</li>
+<li><p>Similarly, system-level events can be audited from the job logs. In DTR, navigate to <strong>System -&gt; Job Logs</strong>, and use the logs there to answer the following questions:</p>
+<ul>
+<li>At what time was the last webhook fired? What endpoint was it sent to? (Hint: notice the &#39;View Logs&#39; link on the right of the Job Logs table).</li>
+<li>How many webhooks has DTR fired?</li>
+<li>When was the last time an &#39;update_vuln_db&#39; job was run?</li>
+<li>How often are &#39;tag_prune&#39; jobs run?</li>
+</ul>
+</li>
+</ol>
+<h2 id="optional-image-mirroring">Optional: Image Mirroring</h2>
+<p>DTR can promote an image not only to another repository it controls, but to a repository in an entirely separate deployment of DTR; we refer to this as &#39;image mirroring&#39;. If feasible, try this with a partner; use one partner&#39;s DTR as &#39;DTR 1&#39;, and the other&#39;s as &#39;DTR 2&#39;.</p>
+<ol>
+<li><p>Login as <code>admin</code> to DTR 1 and to DTR 2.</p>
+</li>
+<li><p>On DTR 1 create a public repository <code>admin/mirror-origin</code>.</p>
+</li>
+<li><p>On DTR 2 create a public repository <code>admin/mirror-target</code>.</p>
+</li>
+<li><p>Back on DTR 1, navigate <strong>Repositories -&gt; admin/mirror-origin -&gt; Mirrors -&gt; New mirror</strong>, select <strong>Push to remote registry</strong>, fill in the form with connection info for DTR 2, and specify <code>admin/mirror-target</code> as the repository to mirror to.</p>
+</li>
+<li><p>Under <strong>Show advanced settings</strong> select <strong>Skip TLS</strong>.</p>
+</li>
+<li><p>Click <strong>Connect</strong> and then <strong>Save and Apply</strong> on the bottom of the view.</p>
+</li>
+<li><p>From <code>ucp-manager-0</code>, tag an alpine image to <code>&lt;DTR_1_FQDN&gt;:4443/admin/mirror-origin:1.0</code>.</p>
+</li>
+<li><p>Push the above image.</p>
+</li>
+<li><p>Demonstrate that the image is available in DTR 1, and has been mirrored to DTR 2.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you set up a basic DTR pipeline. Images can be promoted or mirrored from one repository to another based on conditions that reflect progress through your CI/CD, review, and approval process, allowing you to create a clear picture of how an image moves from development to production, and understand precisely where a given image is in that process. Furthermore, webhooks can be fired at any point in this process to integrate with the rest of your tooling.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

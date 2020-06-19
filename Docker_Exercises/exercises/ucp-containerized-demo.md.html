@@ -1,0 +1,133 @@
+<html>
+<head>
+    <title>ucp-containerized-demo.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="instructor-demo-containerized-nature-of-ucp">Instructor Demo: Containerized Nature of UCP</h1>
+<p>In this demo, we&#39;ll illustrate:</p>
+<ul>
+<li>The containerized nature of UCP manager and worker nodes</li>
+<li>The containerized nature of Kubernetes</li>
+</ul>
+<h2 id="containers-on-ucp-manager-and-worker-nodes">Containers on UCP Manager and Worker Nodes</h2>
+<ol>
+<li><p>Now that you have UCP installed with one manager and 2 worker nodes, list the containers on the <code>ucp-manager-0</code> node:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker container ls
+</code></pre>
+<p>A long list of containers is returned, corresponding to each of UCP&#39;s components; all of UCP&#39;s logic runs in the containers it operates.</p>
+</li>
+<li><p>Furthermore, you can view the same list on your UCP by clicking <strong>Shared Resources -&gt; Nodes -&gt; ucp-manager-0 -&gt; Metrics</strong> then scroll down to see the list of all the containers making up UCP on this node:</p>
+<p><img src="../images/screen-UCP-manager-containers.png" alt="&quot;&quot;">/</p>
+<p>Notice how nothing has been deployed on your UCP yet, but containers already exist on these nodes. This is what we mean by stating that UCP is just a containerized application. Everything needed to run UCP is in these containers.</p>
+</li>
+<li><p>On a worker node, list all containers:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ docker container ls
+</code></pre>
+<p>The list is shorter, but the logic is the same: all processes running to maintain Docker on a worker are present in these containers.</p>
+</li>
+<li><p>Just like manager nodes, you can view the same containers on UCP by navigating <strong>Shared Resources -&gt; Nodes -&gt; ucp-node-1 -&gt; Metrics</strong> then scrolling down to see the list of all the containers making up UCP on this node:</p>
+<p><img src="../images/screen-UCP-worker-containers.png" alt="&quot;&quot;">/</p>
+<p>While there are less containers running on worker nodes, you can still see that UCP on these nodes, just like on manager nodes, is made up of containers.</p>
+</li>
+</ol>
+<h2 id="containerized-nature-of-kubernetes">Containerized Nature of Kubernetes</h2>
+<p>One of UCP&#39;s main responsibilities is to bootstrap Kubernetes; it does so by containerizing all of its components, and deploying and managing them alongside the rest of UCP&#39;s containers.</p>
+<ol>
+<li><p>On your manager node, list all of the containers that make up Kubernetes on UCP:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker container ls | grep &quot;kube&quot;
+</code></pre>
+<p>You should see something like this (abbreviated for legibility):</p>
+<pre><code>2f429032f6f3  docker/ucp-hyperkube:3.2.5  ...  ucp-kube-apiserver
+634c9d8c9982  docker/ucp-hyperkube:3.2.5  ...  ucp-kube-scheduler
+5584e354da0d  docker/ucp-hyperkube:3.2.5  ...  ucp-kube-controller-manager
+4a10c058e535  docker/ucp-hyperkube:3.2.5  ...  ucp-kubelet
+6711f2f860d9  docker/ucp-hyperkube:3.2.5  ...  ucp-kube-proxy
+...
+</code></pre><p>Just like the previous section, you can navigate to <strong>Shared Resources -&gt; Nodes -&gt; ucp-manager-0 -&gt; Metrics</strong> and scroll down to the list of containers, search for <code>kube</code>, and be able to see all of the containers needed to for Kubernetes to run on UCP:</p>
+<p><img src="../images/screen-UCP-kube-containers.png" alt="&quot;&quot;">/</p>
+</li>
+</ol>
+<h2 id="supporting-resources">Supporting Resources</h2>
+<p>In addition to its containers, UCP uses a number of services, volumes, and configurations, all managed automatically by Docker.</p>
+<ol>
+<li><p>List your services on one of your managers:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service ls
+ID             NAME                   MODE    REPLICAS  IMAGE                               
+ilkwicppwfg1   ucp-agent              global  3/3       docker/ucp-agent:3.2.5       
+1ul9kbh2r8lv   ucp-agent-s390x        global  0/0       docker/ucp-agent-s390x:3.2.5   
+dury1nd9aaia   ucp-agent-win          global  0/0       docker/ucp-agent-win:3.2.5     
+dkkre1ya73mc   ucp-auth-api           global  1/1       docker/ucp-auth:3.2.5        
+p3tz9geqw3ta   ucp-auth-api-s390x     global  0/0       docker/ucp-auth-s390x:3.2.5    
+oa45vjrb0tjy   ucp-auth-worker        global  1/1       docker/ucp-auth:3.2.5        
+lzefx9dmqyab   ucp-auth-worker-s390x  global  0/0       docker/ucp-auth-s390x:3.2.5  
+</code></pre>
+<p>A number of services exist:</p>
+<ul>
+<li><code>ucp-agent-*</code> is a global service that manages most other UCP containers. We have three nodes in our cluster right now, so we have three replicas of this service.</li>
+<li><code>ucp-auth-api-*</code> and <code>ucp-auth-worker-*</code> run only on managers (which we currently have only one of), and handle authentication and authorization requests.</li>
+<li><code>*-win</code> services run on Windows workers, which we currently have zero of in this cluster</li>
+<li><code>*-s390x</code> services run on IBM mainframe workers, which we also have none of at the moment.</li>
+</ul>
+</li>
+<li><p>List your volumes on a manager:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker volume ls
+
+DRIVER              VOLUME NAME
+local               02674424e2b66d8386f6ed394e38240412cc270c21da967d2d589784f7a8b082
+local               ucp-auth-api-certs
+local               ucp-auth-store-certs
+local               ucp-auth-store-data
+local               ucp-auth-worker-certs
+local               ucp-auth-worker-data
+local               ucp-client-root-ca
+local               ucp-cluster-root-ca
+local               ucp-controller-client-certs
+local               ucp-controller-server-certs
+local               ucp-kv
+local               ucp-kv-certs
+local               ucp-metrics-data
+local               ucp-node-certs
+</code></pre>
+<p>Most UCP volumes exist to hold certificates for mutual TLS authentication between UCP components, but a few such as <code>ucp-kv</code> and <code>ucp-auth-store-data</code> serve as the storage backend for UC&#39;s databases.</p>
+</li>
+<li><p>Finally, list your configurations on a manager:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker config ls
+
+ID          NAME                                       CREATED         UPDATED
+emjnddw...  com.docker.license-0                       20 minutes ago  20 minutes ago
+l6hs2p6...  com.docker.ucp.internal-config.LRQ59MG...  27 minutes ago  27 minutes ago
+</code></pre>
+<p>In addition to the license and configuration file we see here, UCP will write other configs depending on usage, such as for managing load balancer configuration.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>Docker&#39;s UCP is a containerized application built entirely out of Docker components running on a Swarm. When UCP is deployed, it starts running the globally scheduled service called <code>ucp-agent</code>, which monitors the node it runs on and maintains the rest of the UCP components co-located there. In addition to its containers, UCP also manages several volumes and configurations; therefore, when deleting UCP, it&#39;s important to wipe out all of these objects in the correct order: services, then containers, then volumes, then configurations.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

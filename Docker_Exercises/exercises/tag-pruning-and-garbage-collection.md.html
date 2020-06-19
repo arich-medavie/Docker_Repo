@@ -1,0 +1,101 @@
+<html>
+<head>
+    <title>tag-pruning-and-garbage-collection.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="tag-pruning-and-garbage-collection">Tag Pruning and Garbage Collection</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure tag pruning and garbage collection in DTR</li>
+<li>Establish a pruning policy that reflects company auditing requirements</li>
+</ul>
+<h2 id="pruning-tags">Pruning Tags</h2>
+<ol>
+<li><p>In a fresh directory <code>~/prune</code> on <code>ucp-manager-0</code>, make a <code>Dockerfile</code> with the following content:</p>
+<pre><code class="lang-Dockerfile">FROM centos:7
+
+RUN yum update -y
+RUN yum install -y nano
+</code></pre>
+<p>Make sure <code>$DTR_FQDN</code> is set to the appropriate public DNS (either <code>infra</code> if you set up a DTR load balancer there, or <code>ucp-manager-0</code> if not), and build your image as usual with <code>docker image build -t ${DTR_FQDN}:4443/admin/prune:0.1 .</code>. Push this up to DTR.</p>
+</li>
+<li><p>Make another version of your image by changing <code>nano</code> to <code>vim</code> in the above Dockerfile, tag it as <code>${DTR_FQDN}:4443/admin/prune:0.2</code>, and push to DTR.</p>
+</li>
+<li><p>In DTR, navigate <strong>Repositories -&gt; admin/prune -&gt; Tags</strong>; both your tags should be visible.</p>
+</li>
+<li><p>Navigate to the <strong>Settings</strong> tab in the same view, and scroll down to the <em>Pruning</em> section. Set the tag limit field to 1, and click <strong>Save</strong>.</p>
+</li>
+<li><p>Return to the <strong>Tags</strong> tab. Your <code>0.1</code> tag has been deleted by your pruning policy, which only keeps the latest tag pushed to this repository. <em>Note the time</em> - we&#39;ll need to know roughly when this tag was deleted for the garbage collection step later in this exercise.</p>
+</li>
+<li><p>Navigate <strong>System -&gt; Job Logs</strong> and look for a <em>tag_prune</em> job near the top of the list; logs from the prune operation are available here.</p>
+</li>
+</ol>
+<h2 id="configuring-pruning-policies">Configuring Pruning Policies</h2>
+<p>In the last section, we set a simple limit on the number of tags allowed in a repository; we can set more sophisticated pruning policies as follows.</p>
+<ol>
+<li><p>Turn off the limit on number of tags by setting the tag limit field you modified above back to 0.</p>
+</li>
+<li><p>Navigate <strong>Repositories -&gt; admin/prune -&gt; Pruning</strong>, and click <strong>New pruning policy</strong>.</p>
+</li>
+<li><p>You company requires images to be retained for 12 months for auditing purposes, after which they are safe to delete. Configure a pruning policy that does so here, and then click <strong>Prune all tags</strong> to apply the policy to all current and future tags.</p>
+</li>
+</ol>
+<h2 id="configuring-garbage-collection">Configuring Garbage Collection</h2>
+<ol>
+<li><p>Determine how much space images are currently consuming on disk. If you&#39;re using minio, check the size of its backing volumes on your <code>infra</code> node:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ sudo du -h --max-depth 1 /var/lib/docker/volumes | grep minio
+
+118M    /var/lib/docker/volumes/minio_stack_minio2-data
+118M    /var/lib/docker/volumes/minio_stack_minio3-data
+118M    /var/lib/docker/volumes/minio_stack_minio1-data
+118M    /var/lib/docker/volumes/minio_stack_minio4-data
+</code></pre>
+</li>
+<li><p>Make sure it&#39;s been at least 5 minutes since you deleted the <code>0.1</code> tag of the <code>admin/prune</code> repository. Garbage collection only cleans up layers that have been untagged for at least five minutes.</p>
+</li>
+<li><p>In DTR, navigate <strong>System -&gt; Garbage Collection</strong>, and select:</p>
+<ul>
+<li><strong>Until Done</strong>, allowing GC to proceed until complete</li>
+<li><strong>Daily at Midnight UTC</strong> from the dropdown, so GC is run every night</li>
+<li>Click <strong>Save and Start</strong> to establish your GC policy and initiate a garbage collection job immediately.</li>
+</ul>
+</li>
+<li><p>Navigate to <strong>System -&gt; Job Logs</strong> and look for an <em>onlinegc</em> job near the top of the list; once this job reports done, garbage collection is complete.</p>
+</li>
+<li><p>Check the size on disk of your DTR storage backing again, the way you did above; some disk space should have been freed up by garbage collection. Alternatively, try re-pushing <code>admin:prune:0.1</code>; you should see at least one layer needs to be re-uploaded, since it was deleted by garbage collection.</p>
+<blockquote>
+<p>Remember, garbage collection only deletes layers that aren&#39;t referenced by <em>any</em> tag. If the above steps didn&#39;t free up any space, you might have some other tag pointing to the same image layers. Try deleting a few repositories, wait five minutes, and garbage collect again.</p>
+</blockquote>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we saw how to configure automatic tag pruning and garbage collection in order to automatically mitigate the amount of tags and disk space occupied by DTR-managed images. Defining a useful tag pruning policy usually rests on understanding your company&#39;s software auditing and retirement policies, specifically with respect to image age; establish when an image is either old enough or enough versions out of date to be retired, and build pruning policy around those decisions. In terms of garbage collection, bear in mind this can be a resource-intensive process; consider using the interface we toured above to limit how much time garbage collection is allowed to run for, and to schedule it for off-peak hours for your DTR.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

@@ -1,0 +1,190 @@
+<html>
+<head>
+    <title>encrypting-overlay-networks.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="encrypting-overlay-networks">Encrypting Overlay Networks</h1>
+<p>By default, both Swarm&#39;s VXLAN and Calico&#39;s IP in IP data planes are unencrypted; communication between containers across your cluster is potentially vulnerable. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Encrypt Swarm&#39;s VXLAN overlay network</li>
+<li>Encrypt Calico&#39;s IP in IP data plane</li>
+</ul>
+<h2 id="encrypting-swarm-overlay-networks">Encrypting Swarm Overlay Networks</h2>
+<ol>
+<li><p>Create a regular, unencrypted Swarm overlay network, and plug a simple service into it (also make sure you&#39;re using a context on <code>infra</code> that points to your UCP cluster):</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use ucp-admin
+[centos@infra ~]$ export KUBECONFIG=~/kube.yml
+[centos@infra ~]$ docker network create --driver overlay plainnet
+[centos@infra ~]$ docker service create --mode global --name demo \
+    --network plainnet centos:7 sleep 10000
+</code></pre>
+</li>
+<li><p>After your service starts, visit <code>ucp-node-1</code> and use <code>docker container ls</code> to find the name of the container started for your service there. It should be of the form <code>demo.&lt;node ID&gt;.&lt;task ID&gt;</code>.</p>
+</li>
+<li><p>Now visit <code>ucp-node-0</code>, and find the container started for your <code>demo</code> service there. Start a ping between this container and the one you found on <code>ucp-node-1</code>:</p>
+<pre><code class="lang-bash">[centos@infra ucp-node-0]$ docker container exec -d \
+    &lt;demo container ID on ucp-node-0&gt; ping &lt;name of demo container on ucp-node-1&gt;
+</code></pre>
+</li>
+<li><p>Use <code>tcpdump</code> to listen for traffic, either on host port 4789 (Docker&#39;s regular VXLAN data plane), or via protocol 50 (IPsec encryption, which we&#39;ll set up soon):</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ sudo tcpdump -n -i eth0 port 4789 or proto 50
+
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+15:54:26.786132 IP 10.10.3.142.37389 &gt; 10.10.16.25.4789: VXLAN, flags [I] (0x08)...
+IP 10.0.3.40 &gt; 10.0.3.38: ICMP echo request, id 6, seq 17, length 64
+15:54:26.786926 IP 10.10.16.25.46105 &gt; 10.10.3.142.4789: VXLAN, flags [I] (0x08)...
+IP 10.0.3.38 &gt; 10.0.3.40: ICMP echo reply, id 6, seq 17, length 64
+15:54:27.787192 IP 10.10.3.142.37389 &gt; 10.10.16.25.4789: VXLAN, flags [I] (0x08)...
+IP 10.0.3.40 &gt; 10.0.3.38: ICMP echo request, id 6, seq 18, length 64
+15:54:27.788041 IP 10.10.16.25.46105 &gt; 10.10.3.142.4789: VXLAN, flags [I] (0x08)...
+IP 10.0.3.38 &gt; 10.0.3.40: ICMP echo reply, id 6, seq 18, length 64
+15:54:28.788274 IP 10.10.3.142.37389 &gt; 10.10.16.25.4789: VXLAN, flags [I] (0x08)...
+IP 10.0.3.40 &gt; 10.0.3.38: ICMP echo request, id 6, seq 19, length 64
+15:54:28.789054 IP 10.10.16.25.46105 &gt; 10.10.3.142.4789: VXLAN, flags [I] (0x08)...
+IP 10.0.3.38 &gt; 10.0.3.40: ICMP echo reply, id 6, seq 19, length 64
+</code></pre>
+<p>We see regular, unencrypted pings across the VXLAN tunnel, as we&#39;d expect.</p>
+</li>
+<li><p>Back on <code>infra</code>, tear down your service and network, and recreate them with the <code>--opt encrypted</code> flag to the overlay network:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker service rm demo
+[centos@infra ~]$ docker network rm plainnet
+[centos@infra ~]$ docker network create --driver overlay --opt encrypted cryptnet
+[centos@infra ~]$ docker service create --mode global --name demo \
+    --network cryptnet centos:7 sleep 10000
+</code></pre>
+</li>
+<li><p>Set up a ping between the service containers on <code>ucp-node-0</code> and <code>ucp-node-1</code> exactly like you did above.</p>
+</li>
+<li><p>Run <code>tcpdump</code> on <code>ucp-node-0</code> again, also exactly as above:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ sudo tcpdump -n -i eth0 port 4789 or proto 50
+
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+16:02:11.848875 IP 10.10.3.142 &gt; 10.10.16.25: ESP(spi=0xb60b9a2d,seq=0x6e5)...
+16:02:11.849717 IP 10.10.16.25 &gt; 10.10.3.142: ESP(spi=0x7cd605b9,seq=0x6e5)...
+16:02:12.849154 IP 10.10.3.142 &gt; 10.10.16.25: ESP(spi=0xb60b9a2d,seq=0x6e6)...
+16:02:12.849937 IP 10.10.16.25 &gt; 10.10.3.142: ESP(spi=0x7cd605b9,seq=0x6e6)...
+</code></pre>
+<p>This time, there&#39;s no unencrypted VXLAN traffic, but <code>proto 50</code> picks up the encapsulated security protocol (ESP) communication generated across the encrypted overlay network.</p>
+</li>
+<li><p>Clean up when done:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker service rm demo
+[centos@infra ~]$ docker network rm cryptnet
+</code></pre>
+</li>
+</ol>
+<h2 id="encrypting-the-calico-data-plane">Encrypting the Calico Data Plane</h2>
+<ol>
+<li><p>Create a file on <code>infra</code> called <code>daemonset.yaml</code> describing a simple insecure-demo daemonSet:</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: centos-insecure-demo
+spec:
+  selector:
+    matchLabels:
+      app: centos
+  template:
+    metadata:
+      labels:
+        app: centos
+    spec:
+      containers:
+      - name: centos
+        image: centos:7
+        command: [&quot;sleep&quot;, &quot;100000&quot;]
+</code></pre>
+</li>
+<li><p>Make sure your UCP worker nodes are in &#39;Kubernetes&#39; or &#39;mixed&#39; orchestrator mode, and then create your daemonSet (again make sure <code>$KUBECONFIG</code> is pointing at the <code>kube.yml</code> file you got from the client bundle you want to create these kube objects as):</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl create -f daemonset.yaml
+</code></pre>
+</li>
+<li><p>List information for the pods created for your daemonSet:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl get pods -o wide
+
+NAME                         ...   IP                NODE           
+centos-insecure-demo-9ztnq   ...   192.168.123.193   ucp-node-1     
+centos-insecure-demo-k6hv9   ...   192.168.52.193    ucp-node-0     
+</code></pre>
+</li>
+<li><p>Set the pod on <code>ucp-node-0</code> to ping the pod on <code>ucp-node-1</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl exec -it &lt;pod name on ucp-node-0&gt; \
+    ping &lt;pod IP on ucp-node-1&gt;
+</code></pre>
+</li>
+<li><p>On <code>ucp-node-0</code>, use <code>tcpdump</code> to inspect traffic on eth0 using either protocol 4 (IP in IP, Calico&#39;s default data plane) or protocol 50 (IPSec encryption, which we&#39;ll set up soon):</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ sudo tcpdump -n -i eth0 proto 4 or proto 50
+
+04:39:58.700574 IP 10.10.2.102 &gt; 10.10.24.138: IP 192.168.52.141 &gt; 192.168.124.15: 
+    ICMP echo request, id 11, seq 1, length 64 (ipip-proto-4)
+04:39:58.701332 IP 10.10.24.138 &gt; 10.10.2.102: IP 192.168.124.15 &gt; 192.168.52.141: 
+    ICMP echo reply, id 11, seq 1, length 64 (ipip-proto-4)
+04:39:59.702533 IP 10.10.2.102 &gt; 10.10.24.138: IP 192.168.52.141 &gt; 192.168.124.15: 
+    ICMP echo request, id 11, seq 2, length 64 (ipip-proto-4)
+04:39:59.703245 IP 10.10.24.138 &gt; 10.10.2.102: IP 192.168.124.15 &gt; 192.168.52.141: 
+    ICMP echo reply, id 11, seq 2, length 64 (ipip-proto-4)
+...
+</code></pre>
+<p>The two IPs (<code>10.10.2.102</code> and <code>10.10.24.138</code> in my example above) should correspond to the private IPs of <code>ucp-node-0</code> and <code>ucp-node-1</code>; the trailing <code>ipip-proto-4</code> indicates this is the IP in IP traffic we expect from an unencrypted calico data plane.</p>
+</li>
+<li><p>On another connection to your <code>infra</code> node, deploy the secure overlay daemonSet and related roles:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl apply -f https://bit.ly/2QqWGMR
+</code></pre>
+</li>
+<li><p>Back on your connection to <code>ucp-node-0</code> running <code>tcpdump</code>, it will look like nothing has happened at first; wait a minute or two for the secure overlay deployment to converge, and you should see the IP in IP protocol communications replaced with encapsulated security protocol (ESP) communications, indicating that your pings are now encrypted by IPSec:</p>
+<pre><code class="lang-bash">...
+04:51:25.094279 IP 10.10.2.102 &gt; 10.10.24.138: IP 192.168.52.141 &gt; 192.168.124.15: 
+    ICMP echo request, id 11, seq 687, length 64 (ipip-proto-4)
+04:51:25.095151 IP 10.10.24.138 &gt; 10.10.2.102: IP 192.168.124.15 &gt; 192.168.52.141: 
+    ICMP echo reply, id 11, seq 687, length 64 (ipip-proto-4)
+04:51:26.095529 IP 10.10.2.102 &gt; 10.10.24.138: ESP(spi=0xebd8fcd2,seq=0x1), length 112
+04:51:26.096495 IP 10.10.24.138 &gt; 10.10.2.102: ESP(spi=0x78d72c4a,seq=0x1), length 112
+...
+</code></pre>
+</li>
+<li><p>Run the following on <code>infra</code> to clean up your environment by deleting all the kube assets deployed above:</p>
+<pre><code class="lang-bash">kubectl delete deployment ucp-secureoverlay-mgr --namespace=kube-system
+kubectl delete daemonset ucp-secureoverlay-agent --namespace=kube-system
+kubectl delete secret ucp-secureoverlay --namespace=kube-system
+kubectl delete serviceaccount ucp-secureoverlay-agent --namespace=kube-system
+kubectl delete clusterrolebinding ucp-secureoverlay-agent --namespace=kube-system
+kubectl delete clusterrole ucp-secureoverlay-agent --namespace=kube-system
+kubectl delete clusterrolebinding ucp-secureoverlay-mgr --namespace=kube-system
+kubectl delete clusterrole ucp-secureoverlay-mgr --namespace=kube-system
+kubectl delete serviceaccounts ucp-secureoverlay-mgr --namespace=kube-system
+kubectl delete daemonset centos-insecure-demo
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we encrypted Swarm and Calico data planes; both rely on IPsec tunnels to encrypt their traffic. Have a look at the contents of the yaml you deployed from <a href="https://bit.ly/2QqWGMR">https://bit.ly/2QqWGMR</a> in Calico&#39;s case, and you&#39;ll see that this functionality is delivered by a daemonSet with permissions to manipulate each host&#39;s network. Bear in mind that this encryption must be applied manually, as you did in this demo; neither Calico or UCP imposes it by default.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

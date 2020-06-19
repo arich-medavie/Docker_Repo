@@ -1,0 +1,113 @@
+<html>
+<head>
+    <title>security-scanning-demo.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="instructor-demo-security-scanning">Instructor Demo: Security Scanning</h1>
+<p>In this demo, we&#39;ll illustrate:</p>
+<ul>
+<li>Setting up security scanning in DTR</li>
+<li>Configuring scans for an individual repository</li>
+<li>Interpreting scanning results in UCP and DTR</li>
+</ul>
+<h2 id="setting-up-security-scanning">Setting Up Security Scanning</h2>
+<ol>
+<li><p>In DTR, click <strong>System -&gt; Security</strong> and then toggle the <strong>Enable Scanning</strong> switch to turn on image security scanning. The two grayed out boxes will come into clear view and let you choose whether you&#39;d like to enable automatic or manual scanning.</p>
+<p><img src="../images/screen-dops-enable-scanning.png" alt="&quot;&quot;">/</p>
+</li>
+<li><p>Click <strong>Enable Online Syncing</strong>. This will start the CVE database download.</p>
+</li>
+<li><p>Another section will pop up below that allows you to set the automatic scan timeout length. Set it to one hour.</p>
+<p><img src="../images/screen-automatic-scan-timeout.png" alt="&quot;&quot;">/</p>
+</li>
+<li><p>It&#39;ll take a few minutes to download your first CVE database; while that downloads, we can set up some repositories for scanning.</p>
+</li>
+</ol>
+<h2 id="configuring-scanning-options">Configuring Scanning Options</h2>
+<ol>
+<li><p>Create a new repository in DTR named <code>admin/centos</code>.</p>
+</li>
+<li><p>Navigate <strong>Repositories -&gt; admin/centos -&gt; Settings</strong>, and then scroll down to the <strong>Image Scanning</strong> section and select <strong>On push</strong> to set it to scan automatically.</p>
+</li>
+</ol>
+<h2 id="scanning-an-image">Scanning an Image</h2>
+<ol>
+<li><p>Download the <code>centos:7</code> image:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image pull centos:7
+</code></pre>
+</li>
+<li><p>Set a variable and retag the image:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ DTR_FQDN=&lt;DTR FQDN&gt;
+[centos@ucp-manager-0 ~]$ docker image tag \
+    centos:7 ${DTR_FQDN}:4443/admin/centos:sample
+</code></pre>
+</li>
+<li><p>Navigate back to <strong>System -&gt; Security</strong> in DTR and check the <strong>Image Scanning</strong> section to ensure that the CVE database has finished updating, as indicated by the <em>last sync</em> text above the <strong>Sync Database now</strong> button:</p>
+<p><img src="../images/screen-cve-database.png" alt="&quot;&quot;">/</p>
+</li>
+<li><p>Push the image:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker image push ${DTR_FQDN}:4443/admin/centos:sample
+</code></pre>
+</li>
+<li><p>Navigate to the image and click <strong>View Details</strong> to see that the security vulnerabilities are scanned automatically:</p>
+<p><img src="../images/screen-auto-image-security-scan.png" alt="&quot;&quot;">/</p>
+<p>Notice <code>Scanning for this image is still in progress</code>.</p>
+</li>
+<li><p>Navigate back to your UCP dashboard and notice how memory and CPU usage are spiking from the scan.</p>
+</li>
+</ol>
+<h2 id="reading-scan-results">Reading Scan Results</h2>
+<ol>
+<li><p>Back in DTR, navigate <strong>Repositories -&gt; admin/centos -&gt; Tags -&gt; View Details</strong>. This will take you to the layer view of your image. You should see something like:</p>
+<p><img src="../images/screen-centos-layer-vulnerabilities.png" alt="&quot;&quot;">/</p>
+<p>You&#39;ll see which and how many vulnerabilities are in each layer.</p>
+</li>
+<li><p>Click on the <strong>Components</strong> tab on the same page. You&#39;ll see a view similar to this:</p>
+<p><img src="../images/screen-centos-component-vulnerabilities.png" alt="&quot;&quot;">/</p>
+<p>You will see the exact vulnerabilities, a short summary of each vulnerability, the severity rating of each, and be able to click a link to its entry in the official CVE database. Click on one of the CVE links for a vulnerability.</p>
+</li>
+</ol>
+<h2 id="overriding-a-vulnerability">Overriding a Vulnerability</h2>
+<ol>
+<li>Still in the <em>Components</em> view of the <code>admin/centos:sample</code>, click <strong>Show layers affected</strong> for any CVE of any component, and click <strong>hide</strong> to hide this vulnerability. At the top of the page displaying how many vulnerabilites there are of each severity level, there should now be an extra category showing <em>1 hidden</em>; this allows you to suppress notifications for vulnerabilities your security team have dismissed as nonthreatening.</li>
+</ol>
+<h2 id="vulnerabilities-in-ucp">Vulnerabilities in UCP</h2>
+<ol>
+<li><p>Start up a Swarm service on your cluster using your scanned image:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create --name demo \
+    ${DTR_FQDN}:4443/admin/centos:sample ping 8.8.8.8
+</code></pre>
+<p>Back on UCP, navigate <strong>Swarm -&gt; Services</strong> to see the service, along with a summary of how many vulnerabilities the security scanner found in its underlying image.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this demo, we explored image security scanning in DTR and delved deep into obtaining information about each vulnerability. For expedience, we set both database downloads and image scanning to happen automatically as soon as the necessary information (database updates and new image layers, respectively) was available. Since scanning can be resource intensive, it may be necessary to schedule scanning for low-usage times for your DTR. Either management strategy provides extra security transparency that can be added on to any container pipeline.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

@@ -1,0 +1,167 @@
+<html>
+<head>
+    <title>configuring-dtr-for-high-availability.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="-optional-configuring-dtr-for-high-availability">(Optional) Configuring DTR for High Availability</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Configure a custom DTR storage backend</li>
+<li>Add a DTR replica to an existing deployment so DTR is highly available (HA).</li>
+<li>Configure a load balancer and certificates correctly for directing traffic to an HA DTR.</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li><p>UCP and DTR set up as described in the &#39;Installing UCP&#39;, &#39;Configuring UCP for High Availability&#39;, and &#39;Installing DTR&#39; exercises.</p>
+<blockquote>
+<p><strong>Note:</strong> in this exercise, we&#39;ll continue setting up DTR replicas on our UCP managers. As noted in the last exercise, this is fine for a demo, but should not be done in a business critical environment! In practice, DTR should be installed on dedicated UCP workers.</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="setting-up-a-dtr-storage-backend">Setting up a DTR Storage Backend</h2>
+<p>By default, all images uploaded to DTR will be kept on the local disk of the first DTR replica you just set up. If this node goes down, you will lose access to your images, <em>even if you have extra DTR replicas still working</em>. In order to provide true high availability, we must also set up a highly available storage backend for DTR. In this example, we&#39;ll deploy <a href="https://www.minio.io/">minio</a>, a containerized, highly available database with an S3-compliant API. This minio deployment is for demonstration purposes only! In production, feel free to pick any image storage solution you&#39;re comfortable with from the options discussed in <a href="https://docs.docker.com/ee/dtr/admin/configure/external-storage/">the docs</a>, but <strong>do not</strong> fail to pick one and set it up. Otherwise, your images will not be highly available.</p>
+<ol>
+<li><p>We&#39;ll run minio as a Swarm stack on our <code>infra</code> node. Start by making sure your <code>infra</code> node&#39;s Docker and kube clients are pointing locally by setting the context correctly:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use default
+[centos@infra ~]$ unset KUBECONFIG
+</code></pre>
+</li>
+<li><p>Put <code>infra</code> into swarm mode if it isn&#39;t already, by doing <code>docker swarm init</code> there.</p>
+<blockquote>
+<p><strong>Note</strong> we are <em>not</em> adding <code>infra</code> to our existing swarm! We want our DTR storage backing to remain independent from our cluster, so if we lose one, we don&#39;t lose both.</p>
+</blockquote>
+</li>
+<li><p>On <code>infra</code>, fetch the minio demo setup script, source it, and wait for your minio services to report up and running:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ wget https://bit.ly/2SujSvt -O minio-demo.sh
+[centos@infra ~]$ source minio-demo.sh
+[centos@infra ~]$ docker stack ps minio_stack
+
+... NAME                   ...  NODE  ...  CURRENT STATE          ...
+... minio_stack_minio4.1   ...  infra   ...  Running 6 seconds ago  ...
+... minio_stack_minio3.1   ...  infra   ...  Running 6 seconds ago  ...                  
+... minio_stack_minio2.1   ...  infra   ...  Running 5 seconds ago  ...
+... minio_stack_minio1.1   ...  infra   ...  Running 6 seconds ago  ...
+</code></pre>
+<p>Minio takes about 30 seconds to start up; wait until everything reports running, like above.</p>
+</li>
+<li><p>Visit minio at <code>&lt;infra public IP&gt;:9001</code>. Login with access and secret keys <code>password</code> and <code>password</code>.</p>
+</li>
+<li><p>Click the red &#39;+&#39; in the bottom right of minio, and then click &#39;Create Bucket&#39;. Name your bucket <code>dtr</code>.</p>
+</li>
+<li><p>In DTR as an administrator, navigate <strong>System -&gt; Storage</strong>, then click <strong>Cloud -&gt; Amazon S3</strong> to set up an S3-compliant database. Note that despite what the button says, we <em>aren&#39;t</em> going to use an S3 bucket; any database with an S3-compliant API, such as minio, can be set up as a storage backing from here.</p>
+</li>
+<li><p>In the <strong>S3 Settings</strong> form, fill out the following fields (leave the rest blank):</p>
+<ul>
+<li><strong>AWS Region Name</strong>: <code>us-east-1</code> (no matter where your nodes are - always <code>us-east-1</code> for minio).</li>
+<li><strong>S3 Bucket Name</strong>: <code>dtr</code></li>
+<li><strong>Region Endpoint</strong>: <code>http://&lt;infra public IP&gt;:9001</code></li>
+<li><strong>AWS Access Key</strong>: <code>password</code></li>
+<li><strong>AWS Secret Key</strong>: <code>password</code></li>
+</ul>
+<p>Click <strong>Save</strong>. DTR should report successfully saving the settings.</p>
+</li>
+</ol>
+<h2 id="installing-replicas">Installing Replicas</h2>
+<ol>
+<li><p>On your <code>ucp-manager-0</code> node, run the <code>docker/dtr</code> bootstrapper to configure <code>ucp-manager-1</code> as a DTR replica:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ UCP_FQDN=&lt;ucp-manager-0 FQDN&gt;
+[centos@ucp-manager-0 ~]$ docker container run -it --rm docker/dtr:2.7.5 join \
+    --ucp-node ucp-manager-1 \
+    --ucp-username admin \
+    --ucp-password adminadmin \
+    --ucp-url https://${UCP_FQDN} \
+    --ucp-insecure-tls \
+    --replica-https-port 4443 \
+    --replica-http-port 81
+</code></pre>
+<p>You&#39;ll be asked to &#39;Choose a replica to join&#39;; press return to accept the default (the only currently available option). Take note of this replica ID. <strong>Note</strong> the <code>--ucp-password</code> flag above; if you changed your admin password when you installed UCP or during the Password Recovery exercise, you&#39;ll need to use that password here instead of <code>adminadmin</code>.</p>
+</li>
+<li><p>Run the bootstrapper again but this time, change the <code>--ucp-node</code> flag to <code>ucp-manager-2</code>. When asked which replica to join, make sure to choose the same one you did in the last step (might not be the default this time).</p>
+</li>
+<li><p>Check the <strong>Stacks</strong> page inside the UCP web UI. You should now see three instances of DTR.</p>
+<p><img src="../images/screen-dtr-replica-stacks.png" alt="&quot;&quot;">/</p>
+</li>
+</ol>
+<h2 id="load-balancing-dtr">Load Balancing DTR</h2>
+<p>Now that we have three DTR replicas, we&#39;d like to load balance requests across them. We&#39;ll configure an nginx load balancer on your <code>infra</code> node for this purpose.</p>
+<ol>
+<li><p>On your <code>infra</code> node, create a file called <code>dtr-nginx.conf</code>, and place the following content in it; make sure to replace the <code>&lt;variables&gt;</code> with the private IPs of your own manager nodes:</p>
+<pre><code>user  nginx;
+worker_processes  1;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+stream {
+    upstream dtr_4443 {
+        server &lt;ucp-manager-0 private IP&gt;:4443;
+        server &lt;ucp-manager-1 private IP&gt;:4443;
+        server &lt;ucp-manager-2 private IP&gt;:4443;
+    }
+    server {
+    listen 4443;
+        proxy_pass dtr_4443;
+    }
+}
+</code></pre></li>
+<li><p>Deploy a containerized nginx server, mounting the config you just created:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker container run -d --name dtr-lb --restart=unless-stopped \
+    --publish 4443:4443 \
+    --volume ${PWD}/dtr-nginx.conf:/etc/nginx/nginx.conf:ro \
+    nginx:stable-alpine
+</code></pre>
+</li>
+<li><p>Visit DTR at <code>https://&lt;ucp-manager-0 FQDN&gt;:4443</code> (note <em>not</em> the load balancer address yet), and then: </p>
+<ul>
+<li>Navigate <strong>System -&gt; General</strong></li>
+<li>Scroll down to <em>Domain &amp; Proxies</em></li>
+<li>In the field <strong>Load Balancer / Public Address</strong>, enter your load balancer&#39;s FQDN and port, <code>&lt;infra FQDN&gt;:4443</code>, and click <strong>Save</strong>.</li>
+<li>Navigate in your browser to <code>https://&lt;infra FQDN&gt;:4443</code>. You should now be able to successfully reach DTR through your load balancer.</li>
+</ul>
+<blockquote>
+<p><strong>Note</strong>: you have now successfully placed a load balancer in front of your DTR deployment. When connecting to DTR in future exercises, <code>&lt;DTR_FQDN&gt;</code> will be the FQDN of your <code>infra</code> node. DTR will only accept connections from the public address you registered under <strong>System -&gt; General</strong> <em>Domain &amp; Proxies</em> above.</p>
+</blockquote>
+</li>
+</ol>
+<h2 id="cleanup">Cleanup</h2>
+<ol>
+<li><p>Navigate <strong>Admin Settings -&gt; Scheduler</strong> in UCP</p>
+</li>
+<li><p>Untick all checkboxes under <strong>Container Scheduling</strong>, and click <em>**Save</em>. This is so that later on, when we run containers, we do not accidentally get them scheduled on our DTR nodes or on our UCP manager nodes.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>After completing this exercise, your DTR instance is running in high availability mode. Just like the UCP manager consensus, the DTR replicas maintain their state in a database, and elect a leader via a Raft consensus.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

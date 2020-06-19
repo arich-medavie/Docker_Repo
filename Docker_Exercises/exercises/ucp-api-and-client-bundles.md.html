@@ -1,0 +1,238 @@
+<html>
+<head>
+    <title>ucp-api-and-client-bundles.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="ucp-api-client-bundles">UCP API &amp; Client Bundles</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Authenticate with the UCP API through either a password or an authorization token</li>
+<li>Download and set up a UCP client bundle in order to securely issue commands to a remote Docker Engine from a local Docker client</li>
+<li>Construct and issue calls to the UCP API</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li>UCP installed and running.</li>
+</ul>
+<blockquote>
+<p>In this exercise, you&#39;ll manipulate your Universal Control Plane from a remote machine. Try these exercises on your own laptop if you&#39;re able to install Docker there; if not, try them from your <code>infra</code> node.</p>
+</blockquote>
+<h2 id="establishing-an-auth-token">Establishing an Auth Token</h2>
+<ol>
+<li><p>In order to authenticate with UCP, we need an auth token. Fetch and save one to <code>$AUTHTOKEN</code> with the following commands; note that <code>UCP_FQDN</code> will be the FQDN of your <code>infra</code> node if you set a load balancer up there for UCP, or the FQDN of <code>ucp-manager-0</code> directly if you&#39;re not using a load balancer.</p>
+<pre><code class="lang-bash">[centos@infra ~]$ UCP_FQDN=&lt;UCP FQDN&gt;
+[centos@infra ~]$ AUTHTOKEN=$(curl -sk \
+    -d &#39;{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;adminadmin&quot;}&#39; \
+    https://${UCP_FQDN}/auth/login | jq -r .auth_token)
+</code></pre>
+<p>Note you could do this as any user, not just <code>admin</code>; your ability to take action through the API is limited by the same RBAC rules as the web client.</p>
+</li>
+<li><p>Make sure you got a sensible looking auth token:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ echo $AUTHTOKEN
+
+350835b8-4045-4a49-9dce-e93f16137341
+</code></pre>
+<p>If you don&#39;t get something that looks similar to the above, stop here, make sure your <code>UCP_FQDN</code> environment variable was set as above, and try again.</p>
+</li>
+<li><p>For convenience, create an alias for issuing API commands:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ alias ucp-api=&#39;curl -k -H &quot;Authorization: Bearer $AUTHTOKEN&quot;&#39;
+</code></pre>
+</li>
+</ol>
+<h2 id="setting-up-a-docker-context-from-a-client-bundle">Setting up a Docker Context from a Client Bundle</h2>
+<p><em>This section requires Docker, <code>kubectl</code>, a bash shell, <code>curl</code> and <code>jq</code> to be installed on your local machine. All of this is pre-configured on your <code>infra</code> node if you don&#39;t want to run it locally.</em></p>
+<p>One way to control UCP is to issue Docker CLI commands from a remote node to a UCP cluster. Those commands will be governed by the same access control rules imposed on the authenticated user as when they interact with UCP from the web UI or API. You can manage the credentials needed for connecting the CLI to a docker engine using <code>docker context</code> objects.</p>
+<ol>
+<li><p>The context for your local machine is already captured in the <code>default</code> context which you can see when listing out your existing contexts:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context ls
+
+NAME       DESCRIPTION                               DOCKER ENDPOINT              ...
+default *  Current DOCKER_HOST based configuration   unix:///var/run/docker.sock
+</code></pre>
+</li>
+<li><p>Use the UCP API to download the <em>client bundle</em> for your UCP admin account; this contains the credentials you&#39;ll need to create a context that points your local CLI to your UCP cluster:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ ucp-api https://${UCP_FQDN}/api/clientbundle -o bundle.zip
+</code></pre>
+</li>
+<li><p>Use the <code>bundle.zip</code> you just downloaded to create a new context:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context import ucp-admin bundle.zip
+</code></pre>
+</li>
+<li><p>List your contexts again:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context ls
+
+NAME       DESCRIPTION                               DOCKER ENDPOINT              ...
+default *  Current DOCKER_HOST based configuration   unix:///var/run/docker.sock
+ucp-admin  Docker EE cluster fqdn:443 as user admin  tcp://fqdn:443
+</code></pre>
+<p>Your new <code>ucp-admin</code> context is pointed at your UCP cluster, which listens via the <code>ucp-controller</code> container for Swarm API requests on tcp/443.</p>
+</li>
+</ol>
+<h2 id="using-contexts">Using Contexts</h2>
+<ol>
+<li><p>To issue commands to your UCP cluster, switch to the <code>ucp-admin</code> context:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use ucp-admin
+</code></pre>
+</li>
+<li><p>Issue any Docker CLI commands you like; the response will reflect your UCP cluster, rather than your local machine:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker node ls
+[centos@infra ~]$ docker volume create bundle-vol
+</code></pre>
+<p>Check that that volume got created via your UCP web UI (<strong>Swarm -&gt; Volumes</strong>). Which node did it get created on, and why?</p>
+</li>
+<li><p>You can also use credentials from your client bundle to remotely control UCP&#39;s Kubernetes deployment. Set the <code>KUBECONFIG</code> environment variable accordingly:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ unzip bundle.zip
+[centos@infra ~]$ export KUBECONFIG=~/kube.yml
+[centos@infra ~]$ kubectl config view
+
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://ec2-34-229-199-87.compute-1.amazonaws.com:6443
+  name: ucp_ec2-34-229-199-87.compute-1.amazonaws.com:6443_admin
+contexts:
+- context:
+    cluster: ucp_ec2-34-229-199-87.compute-1.amazonaws.com:6443_admin
+    user: ucp_ec2-34-229-199-87.compute-1.amazonaws.com:6443_admin
+  name: ucp_ec2-34-229-199-87.compute-1.amazonaws.com:6443_admin
+current-context: ucp_ec2-34-229-199-87.compute-1.amazonaws.com:6443_admin
+kind: Config
+preferences: {}
+users:
+- name: ucp_ec2-34-229-199-87.compute-1.amazonaws.com:6443_admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+</code></pre>
+<p>If all is well, you should see something similar to the above, indicating that <code>kubectl</code> will attempt to issue commands to the Kube API listed under <code>cluster:server</code></p>
+</li>
+<li><p>Now put the following in a file called <code>pod.yaml</code> on your <code>infra</code> node:</p>
+<pre><code class="lang-bash">apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.7.9
+    ports:
+    - containerPort: 80
+</code></pre>
+<p>Then create this as a pod, and confirm it exists via your UCP web UI (<strong>Kubernetes -&gt; Pods</strong>):</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl create -f pod.yaml
+</code></pre>
+</li>
+<li><p>You can also use the client bundle credentials to hit the Kubernetes master API directly:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ wget --ca-certificate ./ca.pem --private-key=./key.pem \
+    --certificate=./cert.pem https://${UCP_FQDN}:6443/api/v1/pods -qO-
+</code></pre>
+<p>You should see all the system pods UCP spins up to provide Kubernetes functionality (why are we doing this with <code>wget</code> instead of <code>curl</code> in this case? The SSL implementation used by <code>curl</code> on centos does not at the moment support the elliptic curve keys used by UCP, so for this example we use <code>wget</code> instead).</p>
+</li>
+<li><p>Delete your test pod, and point your CLIs back at your local Docker engine and kube cluster by switching the context back to <code>default</code> and unsetting <code>KUBECONFIG</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl delete pod nginx
+[centos@infra ~]$ docker context use default
+[centos@infra ~]$ unset KUBECONFIG
+</code></pre>
+</li>
+</ol>
+<h2 id="using-the-api-docs">Using the API Docs</h2>
+<p>Besides the CLI, authenticated commands can be issued to UCP by posting JSON data to UCP&#39;s RESTful API.</p>
+<ol>
+<li><p>Make sure some non-system containers are running on your Swarm (anything will do). For example, in UCP, navigate <strong>Swarm -&gt; Services -&gt; Create</strong>, name your service <code>api-demo</code>, and specify <code>nginx:latest</code> as the image, and click <strong>Create</strong>.</p>
+</li>
+<li><p>From UCP&#39;s left sidebar, navigate <strong>Live API -&gt; GET</strong> under the &#39;Container&#39; heading. This provides usage examples on this command.</p>
+</li>
+<li><p>Click <strong>Try It Out -&gt; Execute</strong> without filling in any of the optional fields. The API call is constructed and sent, showing an example of the syntax as a <code>curl</code> command, and the resulting output.</p>
+</li>
+<li><p>Back on your local machine where you set up your auth token, try:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ ucp-api https://${UCP_FQDN}/containers/json | jq
+</code></pre>
+<p>The same endpoint as the demo is hit (<code>jq</code> here pretty-prints the json returned by the curl. Feel free to substitute any other utility that does so).</p>
+</li>
+</ol>
+<h2 id="-optional-managing-objects-through-api-calls">(Optional) Managing Objects Through API Calls</h2>
+<ol>
+<li><p>Create a file <code>mysecret.dat</code> on your <code>infra</code> node containing any short piece of text you&#39;d like to distribute as a secret across your swarm.</p>
+</li>
+<li><p>The syntax to create a secret is described in the API docs under the POST request for the route <code>secrets/create</code>. But, the secret content must be base 64 encoded. Register your secret in your cluster with the correct encoding:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ ucp-api \
+    --data &#39;{&quot;Data&quot;:&quot;&#39;$(base64 mysecret.dat)&#39;&quot;,&quot;Name&quot;:&quot;test_secret&quot;}&#39; \
+    -X POST https://${UCP_FQDN}/secrets/create
+</code></pre>
+</li>
+<li><p>From the web interface, make a service and mount the secret:</p>
+<ul>
+<li>From the left sidebar: <strong>Swarm -&gt; Services -&gt; Create</strong>.</li>
+<li>Name it <code>demo</code>, and specify as an image &quot;nginx&quot;.</li>
+<li>Attach the secret: in the service configuration navigate <strong>Environment -&gt; Use Secret +</strong>; select <code>test_secret</code> from the <em>Secret Name</em> dropdown.</li>
+<li>Hit <strong>Confirm</strong>, then <strong>Create</strong>.</li>
+</ul>
+</li>
+<li><p>Now, we want to check that the secret we made via the API got mounted:</p>
+<ul>
+<li>Navigate <strong>Swarm -&gt; Services -&gt; demo -&gt; Metrics</strong>, and scroll all the way to the bottom; there is a list of container for this service there.</li>
+<li>Click on the one container running for the <code>demo</code> service, then click on the <strong>&gt;_</strong> icon in the top-right.</li>
+<li>Enter <code>sh</code> in the text box that appears, and click <strong>Run</strong> to get a shell connection to this container.</li>
+<li>Run <code>cat /run/secrets/test_secret</code> in the shell, and make sure you get back the secret value you created via the API.</li>
+</ul>
+</li>
+<li><p>Use the API to inspect the <code>demo</code> service you created above (hint: start back at the API docs page to choose an appropriate endpoint). Notice that even this simple service has a large JSON object describing it.</p>
+</li>
+<li><p>Use the API to delete your <code>demo</code> service. Recall <code>curl</code> makes a <code>DELETE</code> request when the flag <code>-X DELETE</code> is used.</p>
+</li>
+<li><p>A similar JSON object to the one found above is used to create a new service. Entering this at the command line would be a nuisance, so create a basic service definition in a file <code>myservice.json</code> on your <code>infra</code> node:</p>
+<pre><code class="lang-bash">{
+  &quot;Name&quot;: &quot;demo&quot;,
+  &quot;TaskTemplate&quot;: {
+    &quot;ContainerSpec&quot;: {
+      &quot;Image&quot;: &quot;nginx:latest&quot;
+    }
+  }
+}
+</code></pre>
+</li>
+<li><p>Create a service using the definition in <code>myservice.json</code>:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ ucp-api --data @myservice.json https://${UCP_FQDN}/services/create
+</code></pre>
+<p>Check to see that your service is running in the web UI as you&#39;d expect, and delete it.</p>
+</li>
+<li><p>Modify the content of <code>myservice.json</code> so that port 80 internal to the container is exposed on port 8080 external to the container.</p>
+<p><strong>Hint 1</strong>: check the &#39;Try It Out&#39; example in the API docs for the <code>POST</code> to <code>/service/create</code> for an example of the JSON structure you&#39;ll need.</p>
+<p><strong>Hint 2</strong>: explore the Docker API docs <a href="https://docs.docker.com/engine/api/v1.39/#">https://docs.docker.com/engine/api/v1.39/</a> for detailed explanations of how most Docker client commands map to API endpoints.</p>
+<p>Re-create the service as above, and make sure you can see the nginx landing page at <code>&lt;ucp-node-0 public IP&gt;:8080</code>.</p>
+</li>
+<li><p>Finally, modify <code>myservice.json</code> again to attach the <code>test_secret</code> secret to this service. Launch the service and check that the secret was mounted correctly. Once satisfied, delete your service and secret.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>Anything that can be done in the UCP UI can be done through the API illustrated in this exercise. Under the hood, the UCP web app is issuing calls to the exact same API, all reachable on port 443 of any UCP manager node. All the same holds true for DTR&#39;s web interface and underlying API. Also note, there&#39;s nothing special about <code>curl</code> in this context; any tool to issue these requests, like Chrome&#39;s postman, will have the same effect.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

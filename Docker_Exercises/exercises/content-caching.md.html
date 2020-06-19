@@ -1,0 +1,201 @@
+<html>
+<head>
+    <title>content-caching.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="-optional-content-caching">(Optional) Content Caching</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Establish a DTR content cache</li>
+<li>Help a DTR user configure their user account and local Docker Engine to pull from a cache of their choice</li>
+</ul>
+<h2 id="setup">Setup</h2>
+<p>DTR content caches are meant to run on independent swarms, geographically close to DTR users who intend to use it. For this exercise, we&#39;ll make an independent cache swarm by removing one of our UCP worker nodes and setting it up as its own swarm.</p>
+<ol>
+<li><p>Remove <code>ucp-node-0</code> from your swarm, clean it up, and establish it as its own swarm:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker swarm leave
+[centos@ucp-node-0 ~]$ docker container rm -f $(docker container ls -aq)
+[centos@ucp-node-0 ~]$ docker swarm init
+</code></pre>
+</li>
+<li><p>Make sure the removal from UCP is clean by deleting the node from the UCP manager consensus via <code>ucp-manager-0</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker node rm ucp-node-0
+</code></pre>
+</li>
+</ol>
+<h2 id="establishing-a-content-cache">Establishing a Content Cache</h2>
+<ol>
+<li><p>Label <code>ucp-node-0</code> as your content cache host (not strictly necessary in a single node swarm, but if this were running on a real local cluster, we&#39;d like to pin the cache to a specific machine users can connect to):</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker node update --label-add dtr.cache=true ucp-node-0
+</code></pre>
+</li>
+<li><p>On <code>ucp-node-0</code>, create a file called <code>~/docker-stack.yaml</code> with the following content (also downloadable from <a href="https://bit.ly/2WlWi9c">https://bit.ly/2WlWi9c</a>):</p>
+<pre><code class="lang-yaml">version: &quot;3.3&quot;
+services:
+  cache:
+    image: docker/dtr-content-cache:2.7.5
+    entrypoint:
+      - /start.sh
+      - &quot;/config.yaml&quot;
+    ports:
+      - 443:443
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.dtr.cache == true]
+      restart_policy:
+        condition: on-failure
+    configs:
+      - config.yaml
+    secrets:
+      - dtr.cert.pem
+      - cache.cert.pem
+      - cache.key.pem
+configs:
+  config.yaml:
+    file: ./config.yaml
+secrets:
+  dtr.cert.pem:
+    file: ./certs/dtr.cert.pem
+  cache.cert.pem:
+    file: ./certs/cache.cert.pem
+  cache.key.pem:
+    file: ./certs/cache.key.pem
+</code></pre>
+</li>
+<li><p>Also on <code>ucp-node-0</code>, create a file called <code>~/config.yaml</code> with the following content, downloadable from <a href="https://bit.ly/2CgWuw0">https://bit.ly/2CgWuw0</a>. Note the <code>&lt;variables&gt;</code> that need to be replaced with values for your cluster:</p>
+<pre><code class="lang-yaml">version: 0.1
+log:
+  level: info
+storage:
+  delete:
+    enabled: true
+  filesystem:
+    rootdirectory: /var/lib/registry
+http:
+  addr: 0.0.0.0:443
+  secret: generate-random-secret
+  host: https://&lt;ucp-node-0 FQDN&gt;
+  tls:
+    certificate: /run/secrets/cache.cert.pem
+    key: /run/secrets/cache.key.pem
+middleware:
+  registry:
+      - name: downstream
+        options:
+          blobttl: 24h
+          upstreams:
+            - https://&lt;DTR FQDN&gt;:4443
+          cas:
+            - /run/secrets/dtr.cert.pem
+</code></pre>
+</li>
+<li><p>Make a directory <code>~/certs</code>. From within that directory, fetch your DTR certificate:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ mkdir certs ; cd certs
+[centos@ucp-node-0 certs]$ DTR_FQDN=&lt;DTR FQDN&gt;
+[centos@ucp-node-0 certs]$ sudo curl -k https://${DTR_FQDN}:4443/ca -o dtr.cert.pem
+</code></pre>
+</li>
+<li><p>Still within <code>~/certs</code>, generate a keypair with a self-signed cert. You will be asked a bunch of questions; answer <code>.</code> to all of them except the <code>Common Name (eg, your name or your server&#39;s hostname)</code>; for this, provide the FQDN of <code>ucp-node-0</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 certs]$ openssl req -newkey rsa:2048 -nodes \
+    -keyout key.pem -x509 -days 365 -out certificate.pem    
+
+Generating a 2048 bit RSA private key
+..................................................................................+++
+............................+++
+writing new private key to &#39;key.pem&#39;
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter &#39;.&#39;, the field will be left blank.
+-----
+Country Name (2 letter code) [XX]:.
+State or Province Name (full name) []:.
+Locality Name (eg, city) [Default City]:.
+Organization Name (eg, company) [Default Company Ltd]:.
+Organizational Unit Name (eg, section) []:.
+Common Name (eg, your name or your server&#39;s hostname) []:&lt;ucp-node-0 FQDN&gt;
+Email Address []:.
+</code></pre>
+<p>If successful, you should now have two files, <code>certificate.pem</code> and <code>key.pem</code>. Move them into position:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 certs]$ mv certificate.pem cache.cert.pem
+[centos@ucp-node-0 certs]$ mv key.pem cache.key.pem
+</code></pre>
+</li>
+<li><p>Change directory back to where you put your stack file <code>docker-stack.yaml</code>, deploy the cache on <code>ucp-node-0</code>, and confirm it is running:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 certs]$ cd ~
+[centos@ucp-node-0 ~]$ docker stack deploy --compose-file docker-stack.yaml dtr-cache
+[centos@ucp-node-0 ~]$ docker stack ps dtr-cache
+
+... NAME                IMAGE                           NODE        ... CURRENT STATE         
+... dtr-cache_cache.1   docker/                         ucp-node-0  ... Running 36
+                         dtr-content-cache:2.7.5                         minutes ago 
+
+</code></pre>
+</li>
+<li><p>From an admin account in DTR, navigate <strong>API -&gt; POST -&gt; Try It Out</strong> under the <strong>content_caches</strong> heading. Fill in the <em>body</em> with the following JSON:</p>
+<pre><code class="lang-json">{
+  &quot;host&quot;: &quot;https://&lt;ucp-node-0 FQDN&gt;:443&quot;,
+  &quot;name&quot;: &quot;mycache&quot;
+}
+</code></pre>
+<p>Click <strong>Execute</strong> to register your new cache in DTR.</p>
+</li>
+</ol>
+<h2 id="pulling-from-a-content-cache">Pulling from a Content Cache</h2>
+<ol>
+<li><p>From an admin account in DTR, navigate <strong>Users -&gt; &lt;username&gt; -&gt; Settings</strong> (any user will do), and scroll down to the &#39;Content Cache&#39; section. Choose your new content cache &#39;mycache&#39; out of the &#39;Region&#39; dropdown, and click <strong>Save</strong>.</p>
+</li>
+<li><p>On <code>ucp-node-1</code>, establish certificate trust with your cache by copying <code>~/certs/cache.cert.pem</code> (from <code>ucp-node-0</code>) to <code>/etc/pki/ca-trust/source/anchors/&lt;ucp-node-0 FQDN&gt;:443.crt</code>, and trust the certificate:</p>
+<pre><code class="lang-bash">[centos@ucp-node-1 ~]$ sudo update-ca-trust
+[centos@ucp-node-1 ~]$ sudo /bin/systemctl restart docker.service
+</code></pre>
+</li>
+<li><p>Still on <code>ucp-node-1</code>, log in to DTR as before, as the user you established the cache for (you&#39;ll need to establish certificate trust with the upstream DTR as well as the cache to do this; see the &#39;Pushing and Pulling From DTR&#39; exercise for instructions). Pull any image from your DTR.</p>
+</li>
+<li><p>On your cache <code>ucp-node-0</code>, confirm that the image you just pulled was routed through the cache by checking the logs of the cache service:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker service logs dtr-cache_cache
+</code></pre>
+<p>You should be able to find logs referencing the image you just pulled.</p>
+</li>
+<li><p>We can further confirm that the image we pulled passed through our cache by finding it in the cache container&#39;s filesystem:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker container exec -it &lt;cache container ID&gt; sh
+/# ls /var/lib/registry/docker/registry/v2/repositories
+</code></pre>
+<p>You should see the owner (user or organization) of the image you pulled; list that directory, and you&#39;ll see the name of the image, and below that, the layers themselves.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you established a content cache, configured a user account to route pulls through it, and set up a Docker engine to trust your cache and pull from it. In addition to mitigating bandwidth consumption for remote users, a content cache can help limit requests to your upstream DTR by serving images from satellite locations.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

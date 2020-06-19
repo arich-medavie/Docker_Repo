@@ -1,0 +1,131 @@
+<html>
+<head>
+    <title>centralized-logging.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="centralized-logging">Centralized Logging</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Set up centralized logging for a swarm using an ELK stack</li>
+</ul>
+<h2 id="installing-elk-stack">Installing ELK Stack</h2>
+<p>In this section we are going to install an ELK stack which serves as a log aggregator and offers a web frontend for the users to drill into logging data.</p>
+<ol>
+<li><p>Make sure your <code>infra</code> node&#39;s Docker and kube clients are pointing locally by setting the context correctly:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ docker context use default
+[centos@infra ~]$ unset KUBECONFIG
+</code></pre>
+</li>
+<li><p>Prepare <code>infra</code> to run <code>elasticsearch</code> by running the following commands:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ sudo sysctl -w vm.max_map_count=262144
+[centos@infra ~]$ echo &#39;vm.max_map_count=262144&#39; | sudo tee --append /etc/sysctl.conf
+</code></pre>
+</li>
+<li><p>Clone a GitHub repository which contains the code necessary to define and run the ELK stack:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ git clone -b ee3.0 https://github.com/docker-training/elk-dee.git
+[centos@infra ~]$ cd elk-dee
+</code></pre>
+</li>
+<li><p>We want our logging stack to be completely independent from our cluster, so that if the cluster goes down, it doesn&#39;t take our logging infrastructure with it. As such, make the <code>infra</code> node its own swarm:</p>
+<pre><code class="lang-bash">[centos@infra elk-dee]$ docker swarm init
+</code></pre>
+</li>
+<li><p>Finally we deploy the ELK stack:</p>
+<pre><code class="lang-bash">[centos@infra elk-dee]$ docker stack deploy -c elk-docker-compose.yml elk
+</code></pre>
+<p>Double check that everything runs by using this command:</p>
+<pre><code class="lang-bash">[centos@infra elk-dee]$ watch docker service ls
+</code></pre>
+<p>and wait until every service is running. You should see something like this:</p>
+<pre><code class="lang-bash">Every 2.0s: docker service ls                     Thu Mar 16 18:46:06 2017
+
+ID            NAME               MODE        REPLICAS  IMAGE
+13sksh79tim2  elk_elasticsearch  replicated  1/1       elasticsearch:5.2
+cluyclmtaw48  elk_logstash       replicated  1/1       logstash:5.2-alpine
+whni0r8ddm8i  elk_kibana         replicated  1/1       kibana:5.2
+</code></pre>
+<p>specifically note the column <strong>Replicas</strong> saying 1/1 for every service. This indicates that we&#39;re ready to roll.</p>
+</li>
+</ol>
+<h2 id="configuring-all-swarm-nodes">Configuring all Swarm nodes</h2>
+<p>Now we need to configure the swarm so that every node in it reports all its logs to the ELK stack. We&#39;ll use the <code>journald</code> log driver, so we can forward container and system logs to the ELK stack, all from the system journal.</p>
+<ol>
+<li><p>Switch to the <code>ucp-manager-0</code> node.</p>
+</li>
+<li><p>Add this logging configuration to the file <code>/etc/docker/daemon.json</code>, alongside the storage driver configuration. The final file should look like:</p>
+<pre><code class="lang-json">{
+    &quot;storage-driver&quot;: &quot;overlay2&quot;,
+    &quot;log-driver&quot;: &quot;journald&quot;,
+    &quot;log-level&quot;: &quot;error&quot;,
+    &quot;log-opts&quot;: {
+        &quot;tag&quot;:&quot;{{.ImageName}}/{{.Name}}/{{.ID}}&quot;
+    }
+}
+</code></pre>
+</li>
+<li><p>Restart the Docker daemon:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ sudo service docker restart
+</code></pre>
+</li>
+<li><p>Repeat the above steps <strong>every single</strong> node of the swarm.</p>
+</li>
+</ol>
+<h2 id="stream-all-docker-logs-to-elk">Stream all Docker logs to ELK</h2>
+<p>Now that we have configured all nodes to generate their respective logs using the <code>journald</code> driver we need to stream the data to our ELK stack.</p>
+<ol>
+<li><p>Switch into <code>ucp-manager-0</code> using the dropdown menu, and run the following:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ git clone -b ee3.0 \
+    https://github.com/docker-training/elk-dee.git
+[centos@ucp-manager-0 ~]$ cd elk-dee
+[centos@ucp-manager-0 elk-dee]$ export LOGSTASH_HOST=&lt;infra private IP&gt;
+[centos@ucp-manager-0 elk-dee]$ docker stack deploy \
+    -c journalbeat-docker-compose.yml journalbeat
+</code></pre>
+<p>The result of this can be visualized as follows:</p>
+<p><img src="../images/elk-stack.png" alt="logging">/</p>
+</li>
+<li><p>Open a browser at <code>http://&lt;infra public IP&gt;:5601</code> to access Kibana. Upon first usage you should be asked to create an index for the events before you can proceed. Accept the defaults and click <strong>Create</strong>.</p>
+</li>
+<li><p>In Kibana navigate to <strong>Discover</strong> and view the list of captured events.</p>
+<p><img src="../images/kibana.png" alt="Events in Kibana">/</p>
+</li>
+<li><p>If you don&#39;t see any events yet, try to launch two containers listening on the same port on your UCP cluster, to generate an error:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker container run -d -p 8000:80 nginx
+[centos@ucp-manager-0 ~]$ docker container run -d -p 8000:80 nginx
+</code></pre>
+</li>
+<li><p>In the filter box at the top of the Kibana page enter <code>*already allocated</code> and hit enter. Port collision errors should be reported and plotted:</p>
+<p><img src="../images/kibana-events.png" alt="port collision errors">/</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you set up a basic ELK stack. ELK is just one of many options for ingesting and collating Docker&#39;s logs, but they all rely on the logging configuration established by <code>/etc/docker/daemon.json</code>. For more information on log drivers in Docker, see <a href="https://docs.docker.com/engine/admin/logging/overview/">https://docs.docker.com/engine/admin/logging/overview/</a>.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

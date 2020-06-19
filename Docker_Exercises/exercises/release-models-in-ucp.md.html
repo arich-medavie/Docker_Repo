@@ -1,0 +1,217 @@
+<html>
+<head>
+    <title>release-models-in-ucp.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="release-models-in-ucp">Release Models in UCP</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Use layer 7 routing in UCP to route traffic while doing blue-green or canary deployments</li>
+</ul>
+<h2 id="blue-green-releases">Blue / Green Releases</h2>
+<p>In a blue / green release, we maintain two versions of our app simultaneously: the current production version (call that the &#39;green&#39; version) which can be reached out by using a host name (which by the virtue of layer 7 routing mapped to the task containers of our &#39;green&#39; service), and the next version we&#39;re considering rolling out to production (call that the &#39;blue&#39; version) which will be initially deployed without any interlock labels. Once we&#39;re satisfied that the blue version is ready for release, we can remove the interlock labels from &#39;green&#39; version and add labels to &#39;blue&#39; versions, and their roles reverse: blue is now in production, and green can be updated and tested safely.</p>
+<ol>
+<li><p>We will first create a network</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network create --driver overlay prod
+</code></pre>
+</li>
+<li><p>Deploy a stable and beta version of the application using two different hostnames:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create \
+    --network prod \
+    --label com.docker.lb.hosts=&quot;demo.web&quot; \
+    --label com.docker.lb.port=&quot;80&quot; \
+    --label com.docker.lb.network=&quot;prod&quot; \
+    --name production_version_green \
+    training/interlock-example:stable
+
+[centos@ucp-manager-0 ~]$ docker service create \
+    --network prod \
+    --label com.docker.lb.hosts=&quot;demo.web-beta&quot; \
+    --label com.docker.lb.port=&quot;80&quot; \
+    --label com.docker.lb.network=&quot;prod&quot; \
+    --name production_candidate_blue \
+    training/interlock-example:beta
+</code></pre>
+<p>Now try to access the service via hostname. Since we don&#39;t have a DNS name set for our hostname used in interlock label, we will access it using curl and pass custom header.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web&quot; &lt;ucp-manager-0 IP&gt;
+</code></pre>
+<p>The new version deployed can be reached out at <code>demo.web-beta</code>.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-beta&quot; &lt;ucp-manger-0 IP&gt;
+</code></pre>
+</li>
+<li><p>Once you&#39;re ready to switch from your &#39;green&#39; to your &#39;blue&#39; deployment, we just need to update the <code>com.docker.lb.hosts</code> label so that <code>demo.web</code> routes to the blue deployment instead of the green. First delete the old labels:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service update \
+    --label-rm com.docker.lb.hosts production_version_green 
+
+[centos@ucp-manager-0 ~]$ docker service update \
+    --label-rm com.docker.lb.hosts production_candidate_blue
+</code></pre>
+</li>
+<li><p>Now set new values for <code>com.docker.lb.hosts</code> to put the blue deployment at the route previously directed to green:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service update \
+    --label-add com.docker.lb.hosts=&quot;demo.web-old-green&quot; production_version_green 
+
+[centos@ucp-manager-0 ~]$ docker service update \
+    --label-add com.docker.lb.hosts=&quot;demo.web&quot; production_candidate_blue
+</code></pre>
+<p>Now you can try to reach out to the newly promoted &#39;blue&#39; version via the same production URL - demo.web</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web&quot; &lt;ucp-manger-0 IP&gt;
+</code></pre>
+<blockquote>
+<p><strong>Alternative Approach</strong>: In order to minimize unavailability and downtime, you can also take an alternative approach where the lable is removed and updated first on &#39;blue&#39; version of the application and then it is updated for &#39;green&#39; version.</p>
+</blockquote>
+</li>
+</ol>
+<h3 id="cleanup">Cleanup</h3>
+<p>Cleanup the service and network setup for this exercise.</p>
+<ol>
+<li><p>Remove the services</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service rm \
+    production_candidate_blue production_version_green
+</code></pre>
+</li>
+<li><p>Remove the network</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network rm prod
+</code></pre>
+</li>
+</ol>
+<h2 id="canary-release">Canary Release</h2>
+<p>While blue / green deployments rely on internal testing of the offline environment, a <em>canary deployment</em> is designed to gather user feedback on updates while minimizing risk. To do this, we will deploy a stable version of a service in replicated mode (with some desired number of replicas), and then we will deploy a new version (beta) of the service with only a few replicas. Both will be deployed with interlock labels and pointing to the same hostname, resulting in a small amount of user traffic being sent to the canary deployment.</p>
+<ol>
+<li><p>We will first create a network</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network create --driver overlay prod
+</code></pre>
+</li>
+<li><p>Deploy a stable version of the application setting a hostname as above, via the interlock label <code>com.docker.lb.hosts</code>:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create \
+    --network prod --replicas 4 \
+    --label com.docker.lb.hosts=&quot;demo.web-app&quot; \
+    --label com.docker.lb.port=&quot;80&quot; \
+    --label com.docker.lb.network=&quot;prod&quot; \
+    --name production_stable \
+    training/interlock-example:stable
+</code></pre>
+<p>Now try to access the service via hostname:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot; &lt;ucp-manger-0 IP&gt;
+</code></pre>
+<p>You will get a response from the stable version of the application e.g.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130 
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+</code></pre>
+</li>
+<li><p>Deploy a beta version of the application using the <strong>same</strong> hostname under interlock label as was used for stable version of the service.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service create \
+    --network prod --replicas 1 \
+    --label com.docker.lb.hosts=&quot;demo.web-app&quot; \
+    --label com.docker.lb.port=&quot;80&quot; \
+    --label com.docker.lb.network=&quot;prod&quot; \
+    --name production_candidate_beta \
+    training/interlock-example:beta
+</code></pre>
+<p>Now try to access the service via hostname.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot; &lt;ucp-manger-0 IP&gt;
+</code></pre>
+<p>This time  you will notice that once in while the request is addressed by the new beta version deployed. e.g.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+Expect things to break, this is beta version!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+Expect things to break, this is beta version!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+This is stable version of the application!
+</code></pre>
+</li>
+<li><p>Once you have gathered enough feedback from users you can gradually scale up the beta service and scale down the old stable version:</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service update production_candidate_beta --replicas 4
+[centos@ucp-manager-0 ~]$ docker service update production_stable --replicas 0
+</code></pre>
+<p>If you try to access the production application now with the hostname, you will be just hitting the new version.</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+Expect things to break, this is beta version!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+Expect things to break, this is beta version!
+
+[centos@ucp-manager-0 ~]$ curl -H &quot;Host: demo.web-app&quot;  3.88.228.130
+Expect things to break, this is beta version!
+</code></pre>
+</li>
+</ol>
+<h3 id="cleanup">Cleanup</h3>
+<p>Cleanup the service and network setup for this exercise.</p>
+<ol>
+<li><p>Remove the services</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker service rm production_candidate_beta
+[centos@ucp-manager-0 ~]$ docker service rm production_stable
+</code></pre>
+</li>
+<li><p>Remove the network</p>
+<pre><code class="lang-bash">[centos@ucp-manager-0 ~]$ docker network rm prod
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you saw simple examples of using UCP Interlock to setup blue / green and canary releases of swarm services routed to at layer 7. Note that this only applies to services exposed externally; there&#39;s no straightforward way to do something analogous for services communicating by VIP internally to your swarm, since a VIP only ever points to one set of identically configured containers, and can&#39;t be changed.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

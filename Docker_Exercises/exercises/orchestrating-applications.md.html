@@ -1,0 +1,225 @@
+<html>
+<head>
+    <title>orchestrating-applications.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="orchestrating-applications">Orchestrating Applications</h1>
+<p>By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Deploy an application orchestrated by either Swarm or Kubernetes via UCP</li>
+<li>Identify analogous orchestration components between the two orchestrators</li>
+</ul>
+<p>Pre-requisites:</p>
+<ul>
+<li>UCP installed with 2 worker nodes (or more).</li>
+<li>No user-defined swarm services running. Before beginning this exercise, delete all your previous services that have been deployed, in order to avoid port conflicts.</li>
+</ul>
+<h2 id="background-info">Background info</h2>
+<p>The application that we are going to deploy is a toy Dockercoin miner that hashes random numbers and logs any hash beginning with a 0 as a &#39;Dockercoin&#39;, and reports real-time results in a web UI. The app consists of five services, that interact like this:</p>
+<p><img src="../images/dockercoins-flow.png" alt="&quot;&quot;">/</p>
+<h2 id="deploying-to-swarm">Deploying to Swarm</h2>
+<p>The Swarm services that make up our app can be defined in a Compose file and then deployed in UCP via the web UI.</p>
+<ol>
+<li><p>In the UCP web UI, navigate <strong>Shared Resources -&gt; Stacks -&gt; Create Stack</strong>.</p>
+</li>
+<li><p>Under <em>1. Configure Application</em>, specify:</p>
+<ul>
+<li><em>Name</em>: <code>dockercoins</code></li>
+<li><em>Orchestrator Mode</em>: <strong>Swarm Services</strong></li>
+<li><em>Application File Mode</em>: <strong>Compose File</strong></li>
+</ul>
+<p>Click <strong>Next</strong>.</p>
+</li>
+<li><p>In the <em>2. Add Application File</em> form, paste the following Compose file into the <strong>docker-compose.yml</strong> field:</p>
+<pre><code class="lang-yaml">version: &quot;3.1&quot;
+
+services:
+  rng:
+    image: training/dockercoins-rng:1.0
+    networks:
+    - dockercoins
+    ports:
+    - &quot;8001:80&quot;
+  hasher:
+    image: training/dockercoins-hasher:1.0
+    networks:
+    - dockercoins
+    ports:
+    - &quot;8002:80&quot;
+  webui:
+    image: training/dockercoins-webui:1.0
+    networks:
+    - dockercoins
+    ports:
+    - &quot;8000:80&quot;
+  redis:
+    image: redis
+    networks:
+    - dockercoins
+  worker:
+    image: training/dockercoins-worker:1.0
+    networks:
+    - dockercoins
+
+networks:
+  dockercoins:
+</code></pre>
+</li>
+<li><p>Click <strong>Create</strong>, wait for the services to deploy and then click <strong>Done</strong>. Dockercoins should now be listed on the <strong>Shared Resources -&gt; Stacks</strong> page.</p>
+</li>
+<li><p>Navigate <strong>Shared Resources -&gt; Stacks -&gt; Dockercoins -&gt; Services</strong>. A list of all the services composing Dockercoins is produced. Wait for all services to report 1/1 in their &#39;Status&#39; column.</p>
+</li>
+<li><p>Open a browser tab and see Dockercoins in action by navigating to port 8000 at the public IP of any of UCP node.</p>
+</li>
+</ol>
+<h2 id="scaling-the-application">Scaling the application</h2>
+<p>We want more Dockercoins! To increase mining speed, we will scale the <code>worker</code> service so that we will have more containers to handle the workload.</p>
+<ol>
+<li><p>Scale the <code>worker</code> service to run 2 containers. Find the option to do this by clicking on the service in UCP, and then clicking the gear in the top right to edit the service.</p>
+</li>
+<li><p>Return to the web UI after the new worker container has spun up. Your mining speed should have doubled.</p>
+</li>
+<li><p>Try re-deploying the Dockercoins application exactly as above, with the following modification to the Compose file:</p>
+<pre><code class="lang-yaml">  worker:
+    image: training/dockercoins-worker:1.0
+    networks:
+    - dockercoins
+    deploy:
+      replicas: 2
+</code></pre>
+<p>The end result is the same, but the scale of the <code>worker</code> service is captured right in the application definition, rather than having to manage it through UCP after deployment. Also notice that re-deploying an existing stack <em>updates</em> the stack.</p>
+</li>
+<li><p>Finally, remove the Dockercoins application via the <strong>Shared Resources -&gt; Stacks</strong> menu in UCP.</p>
+</li>
+</ol>
+<h2 id="deploying-to-kubernetes">Deploying to Kubernetes</h2>
+<ol>
+<li><p>Set up your stack similarly to how you did above when first deploying to Swarm, but this time, select <strong>Kubernetes Workloads</strong> in the <em>1. Configure Application</em> form. Another dropdown will appear asking you to choose a Kubernetes namespace; choose <strong>default</strong>. Finally, use this slightly modified Compose file:</p>
+<pre><code class="lang-yaml">version: &quot;3.1&quot;
+
+services:
+  rng:
+    image: training/dockercoins-rng:1.0
+    networks:
+    - dockercoins
+    ports:
+    - &quot;32769:80&quot;
+  hasher:
+    image: training/dockercoins-hasher:1.0
+    networks:
+    - dockercoins
+    ports:
+    - &quot;32770:80&quot;
+  webui:
+    image: training/dockercoins-webui:1.0
+    networks:
+    - dockercoins
+    ports:
+    - &quot;32768:80&quot;
+  redis:
+    image: redis
+    networks:
+    - dockercoins
+  worker:
+    image: training/dockercoins-worker:1.0
+    networks:
+    - dockercoins
+
+networks:
+  dockercoins:
+</code></pre>
+<p>You&#39;ll notice this is exactly the same as the Compose file we used for deploying Dockercoins above, except now we&#39;re exposing ports &gt;= 32768, above Kubernetes&#39; reserved range for <code>nodePort</code> services. Once configured, click <strong>Create</strong>, and you&#39;ll be sent back to the UCP dashboard.</p>
+</li>
+<li><p>Navigate <strong>Kubernetes -&gt; Pods</strong>. One pod has been created for each object under the <code>services</code> key in your compose.yml.</p>
+</li>
+<li><p>Navigate <strong>Kubernetes -&gt; Controllers</strong>. A ReplicaSet has been created for each microservice to perform keep-alive on the pods we saw in the last step, and a Deployment has been created to manage things like rolling updates and rollback.</p>
+</li>
+<li><p>Navigate <strong>Kubernetes -&gt; Services</strong>. A Kube ClusterIP service has been created for every service, to make ReplicaSets reachable internally to the cluster by DNS resolution of the service name defined in the compose.yml, exactly analogously to how service name resolution behaved in Swarm.</p>
+</li>
+<li><p>Also in the Services list, notice that all the microservices that exposed a public port have a <code>*-published</code> service, like <code>webui-published</code> and <code>rng-published</code>. These are Kubernetes LoadBalancer services that make ReplicaSets reachable from the external network, similar to Swarm&#39;s L4 mesh net.</p>
+</li>
+<li><p>Click on the <code>webui-published</code> Kube service. Scroll to the bottom to find the <em>Ports</em> description; the NodePort assigned to this service should be 32768 as defined in the compose.yml. Visit your Kube-managed dockercoins at <code>&lt;ucp-node-0 public IP&gt;:32768</code>.</p>
+</li>
+<li><p>Clean up your Kubernetes deployment by deleting your Dockercoins stack from the CLI using the client bundle:</p>
+<pre><code class="lang-bash">[centos@infra ~]$ kubectl get stack
+[centos@infra ~]$ kubectl delete stack &lt;name of your stack&gt;
+</code></pre>
+</li>
+</ol>
+<h2 id="-optional-deploying-application-packages">(Optional) Deploying Application Packages</h2>
+<p>In the two examples above, we deployed compose files as stacks to Swarm and Kubernetes. Another way to create a stack on either orchestrator is to deploy an <em>application package</em>, which is a superset of a compose file that includes some metadata and configuration.</p>
+<ol>
+<li><p>In UCP, navigate <strong>Shared Resources -&gt; Stacks -&gt; Create Stack</strong>. Fill in the <strong>Configure Application</strong> box as follows:</p>
+<ul>
+<li>Name: <code>demoapp</code></li>
+<li>Orchestrator Mode: Swarm Services</li>
+<li>Application File Mode: App Package</li>
+<li>Click <strong>Next</strong>.</li>
+</ul>
+</li>
+<li><p>In the <strong>Single-file Application Package</strong> field that appears, paste in the following application package file, and click <strong>Create</strong>:</p>
+<pre><code class="lang-yaml"># This section contains your application metadata.
+version: 0.1.0
+name: hello
+description: &quot;an app file demo&quot;
+maintainers:
+- name: moby
+  email: &quot;whale@docker.com&quot;
+targets:
+  swarm: true
+---
+# This section contains the Compose file that describes your application services.
+version: &quot;3.2&quot;
+services:
+  hello:
+    image: training/http-echo:3.0
+    command: [&quot;-text&quot;, &quot;${text}&quot;]
+    ports:
+    - &quot;${port}:5678&quot;
+---
+# This section contains the default values for your application settings.
+port: 5678
+text: hello development
+</code></pre>
+<p><strong>Note</strong>: To do the same thing for Windows users, please run this in Powershell: <code>Invoke-WebRequest https://bit.ly/2P34MMn -UseBasicParsing -o apppackage.yml</code>. Then, upload the file with the <strong>Upload Application Package File</strong> button instead of pasting the file.</p>
+<p>Note especially the second and third stanzas, between the <code>---</code> delimiters: the middle stanza is a compose file, using variables expressed like <code>${port}</code>. The values to be substituted into these variables at runtime are expressed in the last stanza. In this way, we can capture environment-generic compose files and environment-specific variables, all in the same version-controllable file.</p>
+</li>
+<li><p>On any node in your cluster, hit your app at <code>curl -4 localhost:5678</code>; it should respond with the echo text you provided in the configuration block above, <code>hello development</code>.</p>
+</li>
+<li><p><em>Kubernetes Challenge</em>: try reconfiguring the application package file above to deploy to Kubernetes. Very little has to change; hint: remember that port exposures in a compose file get translated into NodePort services in Kubernetes, which are confined to the port range 32768-35535.</p>
+</li>
+<li><p>Tear down your stack as you did above.</p>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this exercise, you deployed an entire application once as Swarm services, and again as Kubernetes workloads, from a single compose file. Capturing application configuration in compose files is an important best practice for application reproducibility and versioning; the compose file provides a single source of truth that can be distributed via your existing version control strategy, and easily handed off between developers and operations teams. </p>
+<p>Another option for sharing applications between development and operations is the application package file we concluded with. Everything you know about compose files is true of the core syntax for app files, but app files have the added benefit of allowing developers to parameterize their compose files, exposing some parameters for configuration at runtime. Ideally these exposed parameters should be the ones that are safe for operations to change in production, and which don&#39;t affect the correct internal functioning of the app.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>

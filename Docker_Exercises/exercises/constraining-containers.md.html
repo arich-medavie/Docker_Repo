@@ -1,0 +1,267 @@
+<html>
+<head>
+    <title>constraining-containers.md</title>
+    <link href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' rel='stylesheet' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>
+    <link href="../app.css" rel="stylesheet" >
+</head>
+<body>
+    <nav class="navbar navbar-default">
+    <div class="container">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../index.html"><img class="logo" src="https://www.docker.com/sites/all/themes/docker/assets/images/brand-full.svg" alt="Docker" title="Docker"/></a>
+        </div>
+    </div><!-- /.container-fluid -->
+    </nav>
+    <div class="container">
+    <div class="row">
+        <div class="content">
+            <h1 id="constraining-containers">Constraining Containers</h1>
+<p>Beyond the defaults, Docker and Kubernetes can both optionally impose restrictions and requirements on containers to minimize potential attack surfaces. By the end of this exercise, you should be able to:</p>
+<ul>
+<li>Impose SElinux mandatory access control to harden a Docker host</li>
+<li>Impose a Kubernetes PodSecurityPolicy to enforce strong security profiles for pods.</li>
+</ul>
+<h2 id="mandatory-access-control-with-selinux">Mandatory Access Control with SElinux</h2>
+<ol>
+<li><p>On <code>ucp-node-0</code>, create a file which only your <code>root</code> user should be able to access:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ sudo sh -c \
+    &#39;echo &quot;my secret data&quot; &gt; /root/secret.dat&#39;
+</code></pre>
+</li>
+<li><p>Again on <code>ucp-node-0</code>, run a very simple container:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker container run -v /root:/exposed \
+    centos:7 sh -c &#39;ps -auxZ ; cat /exposed/secret.dat&#39;
+
+LABEL                       USER  PID ... COMMAND
+system_u:system_r:spc_t:s0  root  1   ... sh -c ps -auxZ ; cat /exposed/secret.dat
+system_u:system_r:spc_t:s0  root  6   ... ps -auxZ
+my secret data
+</code></pre>
+<p>This container was able to read our &#39;secret&#39; file, because, as we can see from the output of <code>ps</code>, every process in the container is running as <code>root</code>. This is the default configuration for a Docker host.</p>
+</li>
+<li><p>Enable SELinux for the Docker host. Start by modifying the file <code>/usr/lib/systemd/system/docker.service</code> and adding the parameter <code>--selinux-enabled</code> to the <code>ExecStart</code> entry:</p>
+<pre><code class="lang-bash">...
+ExecStart=/usr/bin/dockerd -H fd:// --selinux-enabled ...
+...
+</code></pre>
+</li>
+<li><p>To enable the change, restart the Docker daemon:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ sudo systemctl stop docker
+[centos@ucp-node-0 ~]$ sudo systemctl daemon-reload
+[centos@ucp-node-0 ~]$ sudo systemctl start docker
+</code></pre>
+</li>
+<li><p>Try the same attack as above:</p>
+<pre><code class="lang-bash">[centos@ucp-node-0 ~]$ docker container run -v /root:/exposed \
+    centos:7 sh -c &#39;ps -auxZ ; cat /exposed/secret.dat&#39;
+
+LABEL                                       USER  PID    COMMAND
+system_u:system_r:container_t:s0:c241,c291  root  1      sh -c ps -auxZ ; 
+                                                            cat /exposed/secret.dat
+system_u:system_r:container_t:s0:c241,c291  root  6      ps -auxZ
+cat: /exposed/secret.dat: Permission denied
+</code></pre>
+<p>Even though we&#39;re still running as <code>root</code>, we get a permissions block on files under the host&#39;s <code>/root</code> directory, thanks to the mandatory access control imposed on the containerized process&#39; SElinux label type which changed from <code>spc_t</code> before enabling SElinux, to <code>container_t</code> afterwards. Of course in a UCP deployment we could use RBAC to disallow all host mounts when possible; but even in such a case, the added protection of SElinux is an example of the best practice of <em>defense in depth</em>.</p>
+</li>
+</ol>
+<h2 id="requiring-a-podsecuritypolicy">Requiring a PodSecurityPolicy</h2>
+<p>In addition to RBAC authorization, Kube offers another layer of control of what can and cannot be run in your cluster, in the form of <em>PodSecurityPolicy</em> objects (PSPs). PSPs are evaluated after a request to the API has been made and authenticated but before the corresponding action is accepted, and serve as a final opportunity to modify or reject that request.</p>
+<ol>
+<li><p>By default, UCP grants all users a completely open PodSecurityPolicy, effectively disabling the feature. To enable it, as an admin in UCP navigate <strong>Access Control -&gt; Grants -&gt; Kubernetes</strong>, and delete the role <code>ucp:all:privileged-psp-role</code> (be careful to only delete this role! Other PSP roles are used by UCP system components).</p>
+</li>
+<li><p>Try to create a very simple pod as a non-admin user (either through the UCP frontend or through that user&#39;s client bundle). Make sure the user has edit rights to the <code>default</code> namespace:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: demo
+  namespace: default
+spec:
+  containers:
+  - name: demo
+    image: centos:7
+    command: [&quot;sleep&quot;, &quot;10000&quot;]
+</code></pre>
+<p>The request will fail with the message <em>unable to validate against any pod security policy</em>; with the global permissive PSP grant removed, at this point no user will be able to create any pods.</p>
+</li>
+<li><p>Let&#39;s create our own completely permissive PSP to begin with, equivalent to not enforcing a PSP at all (adapted from <a href="https://kubernetes.io/docs/concepts/policy/pod-security-policy/">https://kubernetes.io/docs/concepts/policy/pod-security-policy/</a>); as a UCP admin, create the following:</p>
+<pre><code class="lang-yaml">apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: psp
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: &#39;*&#39;
+spec:
+  privileged: true
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+  - &#39;*&#39;
+  volumes:
+  - &#39;*&#39;
+  hostNetwork: true
+  hostPorts:
+  - min: 0
+    max: 65535
+  hostIPC: true
+  hostPID: true
+  runAsUser:
+    rule: &#39;RunAsAny&#39;
+  seLinux:
+    rule: &#39;RunAsAny&#39;
+  supplementalGroups:
+    rule: &#39;RunAsAny&#39;
+  fsGroup:
+    rule: &#39;RunAsAny&#39;
+</code></pre>
+<p>You should be able to see this in UCP under <strong>Kubernetes -&gt; Configurations</strong> if successful.</p>
+</li>
+<li><p>We&#39;ll also need a role we can bind to service accounts that allows the use of this PSP; create the following ClusterRole:</p>
+<pre><code class="lang-yaml">kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: psprole
+rules:
+- apiGroups: [&#39;policy&#39;]
+  resources: [&#39;podsecuritypolicies&#39;]
+  verbs:     [&#39;use&#39;]
+  resourceNames:
+  - psp
+</code></pre>
+</li>
+<li><p>Let&#39;s create a service account to grant usage of this PSP to:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pspbot
+  namespace: default
+</code></pre>
+</li>
+<li><p>Bind the ClusterRole and ServiceAccount together:</p>
+<pre><code class="lang-yaml">kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pspbinding
+roleRef:
+  kind: ClusterRole
+  name: psprole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: pspbot
+  namespace: default
+</code></pre>
+</li>
+<li><p>At this point, our <code>pspbot</code> service account should be able to create any pod it likes with the wide-open PodSecurityPolicy we&#39;ve authorized it to use; try it out by creating the following as your unprivileged user:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: demo
+  namespace: default
+spec:
+  serviceAccountName: pspbot
+  containers:
+  - name: demo
+    image: centos:7
+    command: [&quot;sleep&quot;, &quot;10000&quot;]
+</code></pre>
+<p>This time, the creation should succeed.</p>
+</li>
+<li><p>Clean up most of these objects from your <code>infra</code> node:</p>
+<pre><code class="lang-bash">kubectl delete pod demo
+kubectl delete ClusterRoleBinding pspbinding
+kubectl delete ClusterRole psprole
+kubectl delete PodSecurityPolicy psp
+</code></pre>
+</li>
+<li><p>The PodSecuityPolicy we created above completely nullifies the effect of PSPs; we would virtually never make such a grant if we wanted to actually take advantage of this security feature. Let&#39;s create a more useful PSP, which forbids privileged containers in pods and requires all containerized processes to run as a non-root user:</p>
+<pre><code class="lang-yaml">apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: noroot
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: &#39;*&#39;
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  allowedCapabilities:
+  - &#39;*&#39;
+  volumes:
+  - &#39;*&#39;
+  hostNetwork: true
+  hostPorts:
+  - min: 0
+    max: 65535
+  hostIPC: true
+  hostPID: true
+  runAsUser:
+    rule: &#39;MustRunAsNonRoot&#39;
+  seLinux:
+    rule: &#39;RunAsAny&#39;
+  supplementalGroups:
+    rule: &#39;RunAsAny&#39;
+  fsGroup:
+    rule: &#39;RunAsAny&#39;
+</code></pre>
+</li>
+<li><p>Recreate an appropriate ClusterRole and ClusterRoleBinding to grant your <code>pspbot</code> service account the right to use this new <code>noroot</code> PSP, similar to what you did above.</p>
+</li>
+<li><p>Create the same pod you did above, again as your non-admin UCP user. Container creation will get stuck in a <code>CreateContainerConfigError</code> state, as the centos container is not allowed to start as root.</p>
+</li>
+<li><p>Try and create your pod again, but this time run your containerized process as an unprivileged user:</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: demo
+  namespace: default
+spec:
+  serviceAccountName: pspbot
+  securityContext:
+    runAsUser: 1000
+  containers:
+  - name: demo
+    image: centos:7
+    command: [&quot;sleep&quot;, &quot;10000&quot;]
+</code></pre>
+<p>This time the pod creation succeeds, since it respects the constraints imposed on pod creation by the available PSP.</p>
+</li>
+<li><p>Delete the pods you just created to clean up.</p>
+</li>
+<li><p>Delete the <code>noroot</code> PSP with <code>kubectl delete PodSecurityPolicy noroot</code>.</p>
+</li>
+<li><p>Finally, re-create the clusterRoleBinding that removes the requirement for podSecurityPolicy definitions, just so we don&#39;t have to manage this in future exercises:</p>
+<pre><code class="lang-yaml">apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ucp:all:privileged-psp-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: privileged-psp-role
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: system:authenticated
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: system:serviceaccounts
+</code></pre>
+</li>
+</ol>
+<h2 id="conclusion">Conclusion</h2>
+<p>While containers and pods can be voluntarily run with things like root capability de-escalation, LSM profiles, or unprivileged users, a strong security profile needs to enforce these requirements on users. Furthermore, tools like SELinux and PodSecurityPolicy requirements create defense in depth by sitting outside the regular RBAC structure; it&#39;s very easy for RBAC assignments to become complex and difficult to manage, resulting in users getting permissions they shouldn&#39;t thanks to a misconfiguration. The separate and additional filesystem protection offered by SELinux (or AppArmor, similarly) and the additional configuration requirements of a PSP can prevent breaches and security antipatterns even when other protections fail.</p>
+
+        </div>        
+    </div>
+    <div class="row">
+        <ul class="mt-article-pagination" style="display:block;">
+        </ul>
+    </div>
+</div>
+    <div class="footer"></div>
+</body>
